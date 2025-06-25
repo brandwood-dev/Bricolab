@@ -130,7 +130,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
 
       - name: Run tests with coverage
-        run: npm run test:coverage
+        run: npm run test:cov
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
 
