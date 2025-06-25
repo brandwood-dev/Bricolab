@@ -246,7 +246,7 @@ jobs:
             -Dsonar.eslint.reportPaths=eslint-report.json
             -Dsonar.coverage.exclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts
       - name: SonarQube Scan
-        uses: sonarqube-quality-gate-action@master
+        uses: sonarsource/sonarqube-quality-gate-action@master
         with:
           scanMetadataReportFile: target/sonar/report-task.txt
         env:
