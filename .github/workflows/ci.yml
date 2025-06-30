@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main,develop,staging]
   workflow_dispatch:
+  
+permissions:
+  contents: read
+  pull-requests: read
 
 env:
   NODE_VERSION: '22'
