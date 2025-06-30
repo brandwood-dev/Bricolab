@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { UsersRepository } from './users.repository';
 import { CreateUserDto } from './dto/create-user.dto';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
+import { EmailDto } from './dto/email.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 @Injectable()
 export class UsersService {
     private readonly logger = new Logger(UsersService.name);
@@ -15,7 +17,15 @@ export class UsersService {
      * @throws ConflictException
      */
     async createUser(dto: CreateUserDto): Promise<User> {
-        return this.usersRepository.createUser(dto);
+        try {
+            return await this.usersRepository.createUser(dto);
+        }catch (error) {
+            if(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                this.logger.error(`Email already exists: ${dto.email}`);
+                throw new ConflictException('Email already exists');
+            }
+            throw error;
+        }
     }
 
     /**
@@ -23,8 +33,13 @@ export class UsersService {
      * @param id
      * @returns User | null
      */
-    async findUserById(id: string): Promise<User | null> {
-        return this.usersRepository.findUserById(id);
+    async findUserById(id: string): Promise<User> {
+        const user =  await this.usersRepository.findUserById(id);
+        if(!user){
+            this.logger.warn(`User not found with ID: ${id}`);
+            throw new NotFoundException(`User not found}`);
+        }
+        return user;
     }
 
     /**
@@ -32,9 +47,14 @@ export class UsersService {
      * @param email
      * @returns User | null
      */
-    async findUserByEmail(email: string): Promise<User | null> {
-        this.logger.debug(`Finding user by email: ${email}`);
-        return this.usersRepository.findUserByEmail(email);
+    async findUserByEmail(email: string): Promise<User> {
+        
+        const user = await this.usersRepository.findUserByEmail(email);
+        if(!user){
+            this.logger.warn(`User not found with email: ${email}`);
+            throw new NotFoundException(`User not found with email: ${email}`);
+        }
+        return user;
     }
 
     /**
@@ -43,12 +63,34 @@ export class UsersService {
      * @param data
      * @returns User
      */
-    async updateUser(id: string, data: Partial<CreateUserDto>): Promise<User> {
-        return this.usersRepository.updateUser(id, data);
+    async updateUser(id: string, data: Partial<UpdateUserDto>): Promise<User> {
+    try {
+        const user = await this.usersRepository.updateUser(id, data);
+
+        if (!user) {
+        this.logger.warn(`User not found during update`);
+        throw new NotFoundException(`User not found`);
+        }
+
+        this.logger.log(`User updated`);
+        return user;
+    } catch (error) {
+        this.logger.error('Failed to update user', {
+        userId: id,
+        data,
+        error: error instanceof Error ? error.message : String(error),
+        });
+
+        throw error instanceof NotFoundException ? error : new InternalServerErrorException('Could not update user');
+    }
     }
 
-    async findUserByRefreshToken(refreshToken: string): Promise<User | null> {
+    async findUserByRefreshToken(refreshToken: string): Promise<User> {
         const user = await this.usersRepository.findUserByRefreshToken(refreshToken);
+        if(!user) {
+            this.logger.warn(`User not found`);
+            throw new NotFoundException(`User not found`);
+        }
         return user;
     }
 

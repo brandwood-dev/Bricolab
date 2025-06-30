@@ -1,7 +1,10 @@
 import { Body, Controller, ForbiddenException, Logger, Patch, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
-import path from 'path';
+import { LoginDto } from '../users/dto/login.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { EmailDto } from '../users/dto/email.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -18,26 +21,23 @@ export class AuthController {
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         }
     }
-    // works
     @Post('register')
     async register(@Body() createUserDto: CreateUserDto) {
         const user = await this.authService.register(createUserDto);
         return user;
     }
-    // works
     @Post('login')
-    async login(@Body('email') email: string, @Body('password') password: string, @Res() res):Promise<{ access_token: string }> {
-        const result = await this.authService.login(email, password);
+    async login(@Body() loginDto: LoginDto, @Res() res):Promise<{ access_token: string }> {
+        const result = await this.authService.login(loginDto.email, loginDto.password);
         const refresh_token = result.tokens.refresh_token;
         res.cookie('refresh_token', refresh_token, this.getCookieOptions());
         return res.json({
         access_token: result.tokens.access_token,
     });
     }
-    //works
     @Post('verify-email')
-    async verifyEmail(@Body('token') token: string, @Body('email') email: string, @Res() res) {
-        const result = await this.authService.verifyEmail(token, email);
+    async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto, @Res() res) {
+        const result = await this.authService.verifyEmail(verifyEmailDto.email, verifyEmailDto.token);
         const refresh_token = result.tokens.refresh_token;
         res.cookie('refresh_token', refresh_token, this.getCookieOptions());
         return res.json({
@@ -45,26 +45,22 @@ export class AuthController {
             access_token: result.tokens.access_token,
         });
     }
-    // works
     @Post('resend-verification')
-    async resendVerification(@Body('email') email: string) {
-        this.logger.debug(`Resending verification email to: ${email}`);
-        const result = await this.authService.resendVerificationEmail(email);
+    async resendVerification(@Body() emailDto: EmailDto) {
+        const result = await this.authService.resendVerificationEmail(emailDto.email);
         return result;
     }
     @Post('forgot-password')
-    async forgotPassword(@Body('email') email: string) {
-        const result = await this.authService.sendResetPasswordEmail(email);
+    async forgotPassword(@Body() emailDto: EmailDto) {
+        const result = await this.authService.sendResetPasswordEmail(emailDto.email);
         return result;
     }
     @Patch('reset-password')
     async resetPassword(
-        @Body('token') token: string, 
-        @Body('email') email: string, 
-        @Body('newPassword') newPassword: string,
+        @Body() resetPasswordDto: ResetPasswordDto,
         @Res() res
     ) {
-        const result = await this.authService.resetPassword(token, email, newPassword);
+        const result = await this.authService.resetPassword(resetPasswordDto.email, resetPasswordDto.token, resetPasswordDto.password);
         const refresh_token = result.tokens.refresh_token;
         res.cookie('refresh_token', refresh_token, this.getCookieOptions());
         

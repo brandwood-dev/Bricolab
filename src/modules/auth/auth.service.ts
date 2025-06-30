@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '@prisma/client';
 import { UsersService } from '../users/users.service';
@@ -6,8 +6,10 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { MailerService } from '../mailer/mailer.service';
 import {verifyEmailTemplate} from '../mailer/mail_templates/index';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { EmailAlreadyExistsException, EmailAlreadyVerifiedException, EmailNotVerifiedException, InvalidCredentialsException, InvalidTokenException, TokenExpiredException, WeakPasswordException } from './exceptions/auth.exceptions';
+
 
 
 const PASSWORD_POLICY_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
@@ -25,22 +27,17 @@ export class AuthService {
 
         //validate password
         if (!this.validatePassword(createUserDto.password)) {
-            throw new BadRequestException(
-            'Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character',
-            );
+            throw new WeakPasswordException();
         }
 
         //check if email is already registered
         const userexist = await this.usersService.findUserByEmail(createUserDto.email);
         if (userexist) {
-            throw new BadRequestException('Email already registered');
+            throw new EmailAlreadyExistsException;
         }
 
         //hash password
         const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '10', 10);
-        this.logger.debug(`Using ${saltRounds} salt rounds for password hashing`);
-        this.logger.debug('typeof saltRounds: ' + typeof saltRounds);
-
         const hashedPassword = await bcrypt.hash(createUserDto.password, saltRounds);
 
         const verifyToken = this.generateVerificationToken();
@@ -57,16 +54,16 @@ export class AuthService {
 
     }
 
-    async verifyEmail(token: string, email: string) {
+    async verifyEmail(email: string, token: string) {
         const user = await this.usersService.findUserByEmail(email);
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new NotFoundException('User not found');
         }
         if (user.verified_email) {
-            throw new BadRequestException('Email already verified');
+            throw new EmailAlreadyVerifiedException();
         }
         if (user.verify_token !== token) {
-            throw new BadRequestException('Invalid verification token');
+            throw new InvalidTokenException();
         }
         // Update user to mark email as verified
         await this.usersService.updateUser(user.id, {
@@ -75,6 +72,7 @@ export class AuthService {
         });
         
         const tokens = await this.generateTokens(user.id, user.email, user.role);
+        await this.updateRefreshToken(user.id, tokens.refresh_token);
         return {
             message: 'Email verified successfully',
             tokens: tokens,
@@ -89,27 +87,28 @@ export class AuthService {
         }
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            throw new BadRequestException('Invalid email or password');
+            throw new InvalidCredentialsException();
         }
         if (!user.verified_email) {
-            throw new BadRequestException('Email not verified');
+            throw new EmailNotVerifiedException();
         }
 
         const tokens = await this.generateTokens(user.id, user.email, user.role);
+        await this.updateRefreshToken(user.id, tokens.refresh_token);
         
         return { tokens };
     }
 
-    async resendVerificationEmail(email: string) {
+    async resendVerificationEmail(email: string): Promise<{message: string}> {
         this.logger.debug(`Resending verification email to: ${email}`);
         const verifyToken = this.generateVerificationToken();
 
         const user = await this.usersService.findUserByEmail(email);
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new NotFoundException('User not found');
         }
         if (user.verified_email) {
-            throw new BadRequestException('Email already verified');
+            throw new EmailAlreadyVerifiedException();
         }
         // Update user with new verification token
         await this.usersService.updateUser(user.id, {
@@ -123,7 +122,7 @@ export class AuthService {
     async sendResetPasswordEmail(email: string): Promise<{message: string}> {
         const user = await this.usersService.findUserByEmail(email);
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new NotFoundException('User not found');
         }
         const resetToken = this.generateVerificationToken();
         const resetExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
@@ -136,24 +135,22 @@ export class AuthService {
         return { message: 'Reset password email sent successfully' };
     }
 
-    async resetPassword(token: string, email: string, newPassword: string) {
+    async resetPassword(email: string, token: string, password: string) {
         const user = await this.usersService.findUserByEmail(email);
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new NotFoundException('User not found');
         }
         if (user.reset_token !== token) {
-            throw new BadRequestException('Invalid reset token');
+            throw new InvalidTokenException();
         }
         if (user.reset_token_expiry && user.reset_token_expiry < new Date()) {
-            throw new BadRequestException('Reset token expired');
+            throw new TokenExpiredException();
         }
-        if (!this.validatePassword(newPassword)) {
-            throw new BadRequestException(
-                'Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character',
-            );
+        if (!this.validatePassword(password)) {
+            throw new WeakPasswordException();
         }
         const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '10', 10);
-        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
         await this.usersService.updateUser(user.id, {
             password: hashedPassword,
             reset_token: null,
@@ -161,6 +158,7 @@ export class AuthService {
         });
        
         const tokens = await this.generateTokens(user.id, user.email, user.role);
+        await this.updateRefreshToken(user.id, tokens.refresh_token);
         return { 
             message: 'Password reset successfully',
             tokens,
@@ -168,12 +166,29 @@ export class AuthService {
     }
 
     async refreshToken(refreshToken: string) {
-        const user = await this.usersService.findUserByRefreshToken(refreshToken);
+
+        let payload;
+        try {
+            payload = await this.jwtService.verifyAsync(refreshToken, {
+                secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+            });
+        } catch (error) {
+            if (error instanceof TokenExpiredError) {
+                throw new TokenExpiredException();
+            }
+            throw new InvalidTokenException();
+        }
+        const user = await this.usersService.findUserById(payload.sub);
         if (!user) {
-            throw new BadRequestException('Invalid refresh token');
+            throw new InvalidTokenException();
+        }
+        // Verify the refresh token
+        const isRefreshTokenValid = await bcrypt.compare(refreshToken, user.refresh_token);
+        if (!isRefreshTokenValid) {
+            throw new InvalidTokenException();
         }
         const tokens = await this.generateTokens(user.id, user.email, user.role);
-        await this.updateRefreshToken(user.id, refreshToken);
+        await this.updateRefreshToken(user.id, tokens.refresh_token);
         return {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
