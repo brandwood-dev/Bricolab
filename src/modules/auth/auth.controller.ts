@@ -6,7 +6,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { EmailDto } from '../users/dto/email.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Throttle } from '@nestjs/throttler';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('auth')
 @Throttle({ default: { limit: 5, ttl: 60000 } }) 
