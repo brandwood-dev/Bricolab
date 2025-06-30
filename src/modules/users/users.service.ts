@@ -33,11 +33,11 @@ export class UsersService {
      * @param id
      * @returns User | null
      */
-    async findUserById(id: string): Promise<User> {
+    async findUserById(id: string): Promise<User | null> {
         const user =  await this.usersRepository.findUserById(id);
         if(!user){
             this.logger.warn(`User not found with ID: ${id}`);
-            throw new NotFoundException(`User not found}`);
+            return null;
         }
         return user;
     }
@@ -47,12 +47,12 @@ export class UsersService {
      * @param email
      * @returns User | null
      */
-    async findUserByEmail(email: string): Promise<User> {
+    async findUserByEmail(email: string): Promise<User | null> {
         
         const user = await this.usersRepository.findUserByEmail(email);
         if(!user){
             this.logger.warn(`User not found with email: ${email}`);
-            throw new NotFoundException(`User not found with email: ${email}`);
+            return null;
         }
         return user;
     }

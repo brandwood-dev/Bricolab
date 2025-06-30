@@ -5,8 +5,11 @@ import { LoginDto } from '../users/dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { EmailDto } from '../users/dto/email.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { Throttle } from '@nestjs/throttler';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
 @Controller('auth')
+@Throttle({ default: { limit: 5, ttl: 60000 } }) 
 export class AuthController {
     private readonly logger = new Logger(AuthController.name);
     constructor(
@@ -80,6 +83,14 @@ export class AuthController {
         res.cookie('refresh_token', tokens.refresh_token, this.getCookieOptions());
         return res.json({
             access_token: tokens.access_token,
+        });
+    }
+    @Post('logout')
+    async logout(@CurrentUser('id') id: string, @Res() res) {
+        const result = await this.authService.logout(id);
+        res.clearCookie('refresh_token', this.getCookieOptions());
+        return res.json({
+            message: result.message,
         });
     }
 }

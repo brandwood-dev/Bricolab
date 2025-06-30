@@ -9,6 +9,7 @@ import {verifyEmailTemplate} from '../mailer/mail_templates/index';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { EmailAlreadyExistsException, EmailAlreadyVerifiedException, EmailNotVerifiedException, InvalidCredentialsException, InvalidTokenException, TokenExpiredException, WeakPasswordException } from './exceptions/auth.exceptions';
+import { resetPasswordEmailTemplate } from '../mailer/mail_templates/reset_email';
 
 
 
@@ -83,7 +84,7 @@ export class AuthService {
     async login(email: string, password: string) {
         const user = await this.usersService.findUserByEmail(email);
         if (!user) {
-            throw new BadRequestException('Invalid email or password');
+            throw new InvalidCredentialsException();
         }
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
@@ -131,7 +132,9 @@ export class AuthService {
             reset_token_expiry: resetExpiry,
         });
         // Send reset password email
-        await this.sendVerificationEmail(user, resetToken);
+        let html = resetPasswordEmailTemplate;
+        html = html.replaceAll('&CODE&', resetToken);
+        await this.mailerService.send(user.email, 'Code de réinitialisation de mot de passe', html);
         return { message: 'Reset password email sent successfully' };
     }
 
@@ -195,6 +198,18 @@ export class AuthService {
         };
     }
 
+    async logout(userId: string) {
+        const user = await this.usersService.findUserById(userId);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        // Clear the refresh token
+        await this.usersService.updateUser(user.id, {
+            refresh_token: null,
+        });
+        return { message: 'Logged out successfully' };
+    }
+
 
     
 
@@ -214,13 +229,12 @@ export class AuthService {
         return token;
     }
 
-    // sendVerificationEmail will be used for both verification and reset password emails
-    // use a template for the email body
     private async sendVerificationEmail(user: User, token: string) {
         let html = verifyEmailTemplate;
         html = html.replaceAll('&CODE&', token);
-        this.mailerService.send(user.email, 'Verify your email', html);
+        await this.mailerService.send(user.email, 'Verify your email', html);
     }
+
 
     private async generateTokens(userId: string, email: string, role: string ) {
         const payload = {
