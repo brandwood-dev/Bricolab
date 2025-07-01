@@ -248,7 +248,6 @@ jobs:
             -Dsonar.organization=bricolab
             -Dsonar.sources=src
             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.eslint.reportPaths=eslint-report.json
             -Dsonar.coverage.exclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-quality-gate-action@master
