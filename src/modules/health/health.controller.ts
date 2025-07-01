@@ -10,4 +10,5 @@ export class HealthController {
         check() {
             return this.health.check([]);
         }
+    
 }
