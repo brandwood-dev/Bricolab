@@ -1,5 +1,4 @@
-import { Country, Prefix, User, UserType } from "@prisma/client";
-import { IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsEmail, IsNotEmpty, IsString } from "class-validator";
 
 export class LoginDto {
     @IsEmail()

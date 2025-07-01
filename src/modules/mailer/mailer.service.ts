@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 export class MailerService {
     private readonly logger = new Logger(MailerService.name);
     constructor(
-        private configService: ConfigService,    
+        private readonly configService: ConfigService,    
     ) {}
     emailTransport(){
         const transporter = nodemailer.createTransport({

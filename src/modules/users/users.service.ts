@@ -2,7 +2,6 @@ import { ConflictException, Injectable, InternalServerErrorException, Logger, No
 import { UsersRepository } from './users.repository';
 import { CreateUserDto } from './dto/create-user.dto';
 import { Prisma, User } from '@prisma/client';
-import { EmailDto } from './dto/email.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 @Injectable()
 export class UsersService {
@@ -93,5 +92,5 @@ export class UsersService {
         }
         return user;
     }
-    
+
 }

@@ -286,4 +286,21 @@ describe('AuthService', () => {
       });
     });
   });
+
+  describe('logout', () => {
+    it('throws NotFoundException if user not found', async () => {
+      usersService.findUserById.mockResolvedValue(null);
+      await expect(service.logout('1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('clears refresh token and returns success message', async () => {
+      const user = { id: '1', email: 'test@test.com', refresh_token: 'some_token' } as any;
+      usersService.findUserById.mockResolvedValue(user);
+      const res = await service.logout('1');
+      expect(usersService.updateUser).toHaveBeenCalledWith(user.id, {
+        refresh_token: null,
+      });
+      expect(res).toEqual({ message: 'Logged out successfully' });
+    });
+  });
 });

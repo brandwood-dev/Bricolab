@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '@prisma/client';
 import { UsersService } from '../users/users.service';
@@ -38,7 +38,7 @@ export class AuthService {
         }
 
         //hash password
-        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '10', 10);
+        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') ?? '10', 10);
         const hashedPassword = await bcrypt.hash(createUserDto.password, saltRounds);
 
         const verifyToken = this.generateVerificationToken();
@@ -152,7 +152,7 @@ export class AuthService {
         if (!this.validatePassword(password)) {
             throw new WeakPasswordException();
         }
-        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '10', 10);
+        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') ?? '10', 10);
         const hashedPassword = await bcrypt.hash(password, saltRounds);
         await this.usersService.updateUser(user.id, {
             password: hashedPassword,
@@ -245,11 +245,11 @@ export class AuthService {
         const [access_token, refresh_token] = await Promise.all([
             this.jwtService.signAsync(payload, {
                 secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-                expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION_TIME') || '15m',
+                expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION_TIME') ?? '15m',
             }),
             this.jwtService.signAsync(payload, {
                 secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-                expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME') || '7d',
+                expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME') ?? '7d',
             }),
 
         ]);
@@ -259,7 +259,7 @@ export class AuthService {
         };
     }
     async updateRefreshToken(userId: string, refreshToken: string) {
-        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') || '10', 10);
+        const saltRounds = parseInt(this.configService.get<string>('BCRYPT_SALT_ROUNDS') ?? '10', 10);
         const hashed = await bcrypt.hash(refreshToken, saltRounds);
         await this.usersService.updateUser(userId, {
             refresh_token: hashed,

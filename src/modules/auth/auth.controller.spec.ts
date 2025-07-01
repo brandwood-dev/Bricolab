@@ -15,6 +15,7 @@ describe('AuthController', () => {
   const mockResponse = () => {
     const res: any = {};
     res.cookie = jest.fn().mockReturnValue(res);
+    res.clearCookie = jest.fn().mockReturnValue(res);
     res.json = jest.fn().mockReturnValue(res);
     return res;
   };
@@ -32,6 +33,7 @@ describe('AuthController', () => {
       sendResetPasswordEmail: jest.fn(),
       resetPassword: jest.fn(),
       refreshToken: jest.fn(),
+      logout: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -330,6 +332,37 @@ describe('AuthController', () => {
       const res = mockResponse();
 
       await expect(controller.refreshToken(req, res)).rejects.toThrow('Invalid refresh token');
+    });
+  });
+
+  describe('logout', () => {
+    it('should logout successfully and clear refresh token cookie', async () => {
+      const mockResult = {
+        message: 'Logged out successfully',
+      };
+
+      authService.logout.mockResolvedValue(mockResult);
+      const res = mockResponse();
+
+      await controller.logout('user123', res);
+
+      expect(authService.logout).toHaveBeenCalledWith('user123');
+      expect(res.clearCookie).toHaveBeenCalledWith('refresh_token', expect.objectContaining({
+        httpOnly: true,
+        path: '/auth/refresh',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      }));
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Logged out successfully',
+      });
+    });
+
+    it('should throw error when logout service fails', async () => {
+      authService.logout.mockRejectedValue(new Error('User not found'));
+      const res = mockResponse();
+
+      await expect(controller.logout('invalid_user', res)).rejects.toThrow('User not found');
+      expect(authService.logout).toHaveBeenCalledWith('invalid_user');
     });
   });
 

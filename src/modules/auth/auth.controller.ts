@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Logger, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Logger, Patch, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LoginDto } from '../users/dto/login.dto';
@@ -10,7 +10,6 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { 
     ApiTags, 
     ApiOperation, 
-    ApiResponse, 
     ApiBody, 
     ApiBadRequestResponse, 
     ApiUnauthorizedResponse,
@@ -19,7 +18,7 @@ import {
     ApiCreatedResponse,
     ApiOkResponse 
 } from '@nestjs/swagger';
-import { count } from 'console';
+
 
 @ApiTags('Authentication')
 @Controller('auth')

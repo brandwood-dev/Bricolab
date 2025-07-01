@@ -1,54 +1,17 @@
-import { Country, Prefix, User, UserType } from "@prisma/client";
-import { IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsOptional, IsString } from "class-validator";
+import { BaseUserDto } from "./base-user.dto";
+import { PartialType } from '@nestjs/mapped-types';
 
-export class UpdateUserDto {
-    @IsEmail()
-    @IsNotEmpty()
-    email: string;
+export class UpdateUserDto extends PartialType(BaseUserDto) {
+  @IsOptional()
+  @IsString()
+  reset_token?: string | null;
 
-    @IsNotEmpty()
-    @IsString()
-    password: string;
+  @IsOptional()
+  @IsString()
+  reset_token_expiry?: Date | null;
 
-    @IsNotEmpty()
-    @IsEnum(UserType)
-    type: UserType;
-
-    @IsNotEmpty()
-    @IsString()
-    firstName: string;
-
-    @IsNotEmpty()
-    @IsString()
-    lastName: string;
-
-    @IsNotEmpty()
-    @IsEnum(Country)
-    country: Country;
-
-    @IsNotEmpty()
-    @IsEnum(Prefix)
-    prefix: Prefix;
-
-    @IsNotEmpty()
-    @IsNumber()
-    phoneNumber: number;
-
-    @IsString()
-    @IsOptional()
-    verify_token?: string | null;
-
-    @IsBoolean()
-    @IsOptional()
-    verified_email?: boolean = false;
-
-    @IsString()
-    @IsOptional()
-    reset_token?: string | null;
-    
-    @IsOptional()
-    reset_token_expiry?: Date | null;
-
-    @IsOptional()
-    refresh_token?: string | null;
+  @IsOptional()
+  @IsString()
+  refresh_token?: string | null;
 }
