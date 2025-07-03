@@ -8,6 +8,9 @@ import { MailerModule } from './modules/mailer/mailer.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerBehindProxyGuard } from './common/guards/throttler-behind-proxy.guard';
+import { UplaodModule } from './modules/uplaod/uplaod.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
   imports: [
@@ -27,6 +30,11 @@ import { ThrottlerBehindProxyGuard } from './common/guards/throttler-behind-prox
       limit: 10,
     },
   ],
+    }),
+    UplaodModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),  
+      serveRoot: '/uploads',                        
     }),
   ],
   controllers: [],

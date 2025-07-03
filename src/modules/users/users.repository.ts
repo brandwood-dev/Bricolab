@@ -3,6 +3,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { User } from "@prisma/client";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { paginate } from "../../common/utils/paginate";
+import { UserResponseDto } from "./dto/user-response.dto";
 
 
 @Injectable()
@@ -57,5 +59,15 @@ export class UsersRepository {
         return user;
     }
 
+    async getUsers(page: number, limit: number, search?: string) {
+        this.logger.debug(`Fetching users with page: ${page}, limit: ${limit}, search: ${search}`);
+        return paginate(this.prisma.user, page, limit,UserResponseDto,['firstName','lastName','email'], search);
+    }
 
+    async deleteUser(id: string): Promise<User> {
+        const user = await this.prisma.user.delete({
+            where: { id },
+        });
+        return user;
+    }
 }

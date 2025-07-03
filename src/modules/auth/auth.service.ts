@@ -8,7 +8,7 @@ import { MailerService } from '../mailer/mailer.service';
 import {verifyEmailTemplate} from '../mailer/mail_templates/index';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { EmailAlreadyExistsException, EmailAlreadyVerifiedException, EmailNotVerifiedException, InvalidCredentialsException, InvalidTokenException, TokenExpiredException, WeakPasswordException } from './exceptions/auth.exceptions';
+import { EmailAlreadyExistsException, EmailAlreadyVerifiedException, EmailNotVerifiedException, InvalidCredentialsException, InvalidTokenException, TokenExpiredException, UserNotActiveException, WeakPasswordException } from './exceptions/auth.exceptions';
 import { resetPasswordEmailTemplate } from '../mailer/mail_templates/reset_email';
 
 
@@ -93,11 +93,13 @@ export class AuthService {
         if (!user.verified_email) {
             throw new EmailNotVerifiedException();
         }
-
+        if (!user.isActive) {
+            throw new UserNotActiveException();
+        }
         const tokens = await this.generateTokens(user.id, user.email, user.role);
         await this.updateRefreshToken(user.id, tokens.refresh_token);
         
-        return { tokens };
+        return { tokens, user };
     }
 
     async resendVerificationEmail(email: string): Promise<{message: string}> {

@@ -18,6 +18,8 @@ import {
     ApiCreatedResponse,
     ApiOkResponse 
 } from '@nestjs/swagger';
+import { plainToInstance } from 'class-transformer';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 
 
 @ApiTags('Authentication')
@@ -86,7 +88,7 @@ export class AuthController {
     })
     async register(@Body() createUserDto: CreateUserDto) {
         const user = await this.authService.register(createUserDto);
-        return user;
+        return plainToInstance(UserResponseDto,user);
     }
     @Post('login')
     @ApiOperation({ 
@@ -138,6 +140,7 @@ export class AuthController {
         res.cookie('refresh_token', refresh_token, this.getCookieOptions());
         return res.json({
         access_token: result.tokens.access_token,
+        user:plainToInstance(UserResponseDto,result.user)
     });
     }
     @Post('verify-email')

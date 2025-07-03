@@ -5,6 +5,7 @@ import { UsersService } from './users.service';
 import { UsersRepository } from './users.repository';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UplaodService } from '../uplaod/uplaod.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -26,6 +27,7 @@ describe('UsersService', () => {
     reset_token_expiry: null,
     role: Role.USER,
     refresh_token: null,
+    profilePicture: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -66,6 +68,12 @@ describe('UsersService', () => {
     findUserByRefreshToken: jest.fn(),
   };
 
+  const mockUplaodService = {
+    uploadProfilePicture: jest.fn(),
+    deleteProfilePicture: jest.fn(),
+    
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -73,6 +81,10 @@ describe('UsersService', () => {
         {
           provide: UsersRepository,
           useValue: mockUsersRepository,
+        },
+        {
+          provide: UplaodService,
+          useValue: mockUplaodService,
         },
       ],
     }).compile();
