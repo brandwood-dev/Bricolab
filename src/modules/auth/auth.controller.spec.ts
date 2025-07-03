@@ -129,6 +129,8 @@ describe('AuthController', () => {
         role: Role.USER,
         refresh_token: null,
         profilePicture: null,
+        idCardFront: null,
+        idCardBack: null,
         isActive: true,
         isVerified: true,
         createdAt: new Date(),

@@ -23,14 +23,14 @@ export class UsersController {
     ){}
 
     @Get(':id')
-    getUserById(@Param('id') id: string ) {
-        const user = this.usersService.findUserById(id);
+    async getUserById(@Param('id') id: string ) {
+        const user = await this.usersService.findUserById(id);
         return plainToInstance(UserResponseDto,user);
     }
     @Get('me')
     @UseGuards(JwtAuthGuard)
-    getCurrentUser(@CurrentUser('id') id: string) {
-        const user = this.usersService.findUserById(id);
+    async getCurrentUser(@CurrentUser('id') id: string) {
+        const user =await this.usersService.findUserById(id);
         return plainToInstance(UserResponseDto,user);
     }
     @Post('profile-picture')
@@ -57,7 +57,7 @@ export class UsersController {
         @Query('search') search?: string
         ) {
         this.logger.debug(`Fetching users with page: ${page}, limit: ${limit}, search: ${search}`);
-        const users= this.usersService.getUsers(page, limit,search);
+        const users= await this.usersService.getUsers(page, limit,search);
         return users;
     }
 

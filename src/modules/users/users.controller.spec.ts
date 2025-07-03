@@ -27,6 +27,8 @@ describe('UsersController', () => {
     role: Role.USER,
     refresh_token: null,
     profilePicture: null,
+    idCardFront: null,
+    idCardBack: null,
     isActive: true,
     isVerified: false,
     createdAt: new Date(),
@@ -39,6 +41,8 @@ describe('UsersController', () => {
     getUsers: jest.fn(),
     deleteUser: jest.fn(),
     changeUserStatus: jest.fn(),
+    uploadIdCard: jest.fn(),
+    verifyUser: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -225,6 +229,81 @@ describe('UsersController', () => {
 
       await expect(controller.changeUserStatus('1', motive)).rejects.toThrow(error);
       expect(service.changeUserStatus).toHaveBeenCalledWith('1', motive);
+    });
+  });
+
+  describe('uploadIdCard', () => {
+    const mockFiles = {
+      idFront: [{
+        fieldname: 'idFront',
+        originalname: 'id-front.jpg',
+        encoding: '7bit',
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('fake front id data'),
+        size: 1024,
+      } as Express.Multer.File],
+      idBack: [{
+        fieldname: 'idBack',
+        originalname: 'id-back.jpg',
+        encoding: '7bit',
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('fake back id data'),
+        size: 1024,
+      } as Express.Multer.File]
+    };
+
+    it('should upload ID card files successfully', async () => {
+      const mockResult = {
+        message: 'ID card uploaded successfully',
+        idCardFront: '/uploads/id-cards/front-123.jpg',
+        idCardBack: '/uploads/id-cards/back-123.jpg'
+      };
+      mockUsersService.uploadIdCard.mockResolvedValue(mockResult);
+
+      const result = await controller.uploadIdCard('1', mockFiles);
+
+      expect(service.uploadIdCard).toHaveBeenCalledWith('1', [mockFiles.idFront[0], mockFiles.idBack[0]]);
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should handle upload errors', async () => {
+      const error = new BadRequestException('ID card upload failed');
+      mockUsersService.uploadIdCard.mockRejectedValue(error);
+
+      await expect(controller.uploadIdCard('1', mockFiles)).rejects.toThrow(
+        BadRequestException
+      );
+      expect(service.uploadIdCard).toHaveBeenCalledWith('1', [mockFiles.idFront[0], mockFiles.idBack[0]]);
+    });
+  });
+
+  describe('verifyAccount', () => {
+    it('should verify user account successfully', async () => {
+      const verifiedUser = { ...mockUser, isVerified: true };
+      mockUsersService.verifyUser.mockResolvedValue(verifiedUser);
+
+      const result = await controller.verifyAccount('1');
+
+      expect(service.verifyUser).toHaveBeenCalledWith('1');
+      expect(result).toEqual(plainToInstance(UserResponseDto, verifiedUser));
+    });
+
+    it('should handle verification errors', async () => {
+      const error = new Error('Verification failed');
+      mockUsersService.verifyUser.mockRejectedValue(error);
+
+      await expect(controller.verifyAccount('1')).rejects.toThrow(error);
+      expect(service.verifyUser).toHaveBeenCalledWith('1');
+    });
+
+    it('should handle user not found during verification', async () => {
+      const error = new BadRequestException('User not found');
+      mockUsersService.verifyUser.mockRejectedValue(error);
+
+      await expect(controller.verifyAccount('nonexistent')).rejects.toThrow(
+        BadRequestException
+      );
+      expect(service.verifyUser).toHaveBeenCalledWith('nonexistent');
     });
   });
 

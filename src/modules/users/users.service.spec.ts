@@ -29,6 +29,8 @@ describe('UsersService', () => {
     role: Role.USER,
     refresh_token: null,
     profilePicture: null,
+    idCardFront: null,
+    idCardBack: null,
     isActive: true,
     isVerified: false,
     createdAt: new Date(),
@@ -61,6 +63,8 @@ describe('UsersService', () => {
     verified_email: true,
     reset_token: null,
     reset_token_expiry: null,
+    idCardFront: null,
+    idCardBack: null,
   };
 
   const mockUsersRepository = {
@@ -423,6 +427,126 @@ describe('UsersService', () => {
         expect.any(String)
       );
       expect(result).toEqual(activatedUser);
+    });
+  });
+
+  describe('uploadIdCard', () => {
+    const mockFiles = [
+      {
+        fieldname: 'idCard',
+        originalname: 'id-front.jpg',
+        encoding: '7bit',
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('fake front id image'),
+        size: 1024,
+      } as Express.Multer.File,
+      {
+        fieldname: 'idCard',
+        originalname: 'id-back.jpg',
+        encoding: '7bit',
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('fake back id image'),
+        size: 1024,
+      } as Express.Multer.File
+    ];
+
+    it('should upload ID card images successfully', async () => {
+      const frontUrl = '/uploads/id-cards/id-front.jpg';
+      const backUrl = '/uploads/id-cards/id-back.jpg';
+      
+      mockUsersRepository.findUserById.mockResolvedValue(mockUser);
+      mockUplaodService.uploadFileLocal
+        .mockResolvedValueOnce(frontUrl)
+        .mockResolvedValueOnce(backUrl);
+      mockUsersRepository.updateUser.mockResolvedValue({
+        ...mockUser,
+        idCardFront: frontUrl,
+        idCardBack: backUrl
+      });
+
+      const result = await service.uploadIdCard('1', mockFiles);
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(mockUplaodService.uploadFileLocal).toHaveBeenCalledTimes(2);
+      expect(mockUplaodService.uploadFileLocal).toHaveBeenCalledWith(mockFiles[0], 'id-cards');
+      expect(mockUplaodService.uploadFileLocal).toHaveBeenCalledWith(mockFiles[1], 'id-cards');
+      expect(repository.updateUser).toHaveBeenCalledWith('1', {
+        idCardFront: frontUrl,
+        idCardBack: backUrl
+      });
+      expect(result).toEqual({
+        message: 'ID card images uploaded successfully',
+        idCardFront: frontUrl,
+        idCardBack: backUrl
+      });
+    });
+
+    it('should throw BadRequestException when no files provided', async () => {
+      await expect(service.uploadIdCard('1', undefined as any)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+
+    it('should throw BadRequestException when wrong number of files provided', async () => {
+      const singleFile = [mockFiles[0]];
+      
+      await expect(service.uploadIdCard('1', singleFile)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockUsersRepository.findUserById.mockResolvedValue(null);
+
+      await expect(service.uploadIdCard('nonexistent', mockFiles)).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('nonexistent');
+    });
+  });
+
+  describe('verifyUser', () => {
+    it('should verify user successfully', async () => {
+      const unverifiedUser = { ...mockUser, isVerified: false };
+      const verifiedUser = { 
+        ...mockUser, 
+        isVerified: true,
+        idCardFront: null,
+        idCardBack: null
+      };
+      
+      mockUsersRepository.findUserById.mockResolvedValue(unverifiedUser);
+      mockUsersRepository.updateUser.mockResolvedValue(verifiedUser);
+
+      const result = await service.verifyUser('1');
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(repository.updateUser).toHaveBeenCalledWith('1', {
+        isVerified: true,
+        idCardBack: null,
+        idCardFront: null
+      });
+      expect(result).toEqual(verifiedUser);
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockUsersRepository.findUserById.mockResolvedValue(null);
+
+      await expect(service.verifyUser('nonexistent')).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('nonexistent');
+    });
+
+    it('should throw ConflictException when user already verified', async () => {
+      const alreadyVerifiedUser = { ...mockUser, isVerified: true };
+      
+      mockUsersRepository.findUserById.mockResolvedValue(alreadyVerifiedUser);
+
+      await expect(service.verifyUser('1')).rejects.toThrow(
+        ConflictException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
     });
   });
 
