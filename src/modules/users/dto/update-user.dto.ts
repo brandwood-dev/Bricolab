@@ -26,4 +26,11 @@ export class UpdateUserDto extends PartialType(BaseUserDto) {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  idCardFront?: string | null;
+  @IsOptional()
+  @IsString()
+  idCardBack?: string | null;
 }

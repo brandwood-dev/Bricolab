@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Delete, Get, Logger, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Logger, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { AdminGuard, JwtAuthGuard } from '../../common/guards';
 import { UserResponseDto } from './dto/user-response.dto';
 import { plainToInstance } from 'class-transformer';
@@ -77,4 +77,32 @@ export class UsersController {
         const user = await this.usersService.changeUserStatus(id, motive);
         return plainToInstance(UserResponseDto,user);
     }
+    @Patch('id-card')
+    @UseInterceptors(FileFieldsInterceptor([
+        { name: 'idFront', maxCount: 1 },
+        { name: 'idBack', maxCount: 1 }
+        ], {
+        limits: { fileSize: 5 * 1024 * 1024 },
+        fileFilter: imageFileFilter,
+        storage: null
+    }))
+    async uploadIdCard(
+        @CurrentUser('id') userId: string,
+        @UploadedFiles() files: { idFront: Express.Multer.File[], idBack: Express.Multer.File[] }
+    ) {
+        
+        const idCardFront = files.idFront[0];
+        const idCardBack = files.idBack[0];
+        
+        const result = await this.usersService.uploadIdCard(userId, [idCardFront, idCardBack]);
+        return result;
+    }
+
+    @Patch('verify-user/:id')
+    @UseGuards(AdminGuard)
+    async verifyAccount(@Param('id') id: string) {
+        const user = await this.usersService.verifyUser(id);
+        return plainToInstance(UserResponseDto, user);
+    }
+    
 }

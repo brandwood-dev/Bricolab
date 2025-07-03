@@ -55,6 +55,8 @@ model User {
   role      Role @default(USER)
   refresh_token String? @unique
   profilePicture String?
+  idCardFront String?
+  idCardBack String?
   isActive Boolean @default(true)
   isVerified Boolean @default(false)
   createdAt DateTime @default(now())

@@ -11,6 +11,8 @@ export class UserResponseDto {
     prefix: Prefix;
     type: UserType;
     profilePicture: string | null;
+    idCardFront: string | null;
+    idCardBack: string | null;
     @Exclude()
     verified_email: boolean;
     createdAt: Date;

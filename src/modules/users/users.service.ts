@@ -147,6 +147,55 @@ export class UsersService {
         return updatedUser;
     }
 
+    async uploadIdCard(userId: string, files: Express.Multer.File[]) {
+    if (!files || files.length !== 2) {
+        this.logger.error('Two ID card images are required');
+        throw new BadRequestException('You must upload both front and back of the ID card');
+    }
+
+    const user = await this.usersRepository.findUserById(userId);
+    if (!user) {
+        this.logger.warn(`User not found with ID: ${userId}`);
+        throw new NotFoundException('User not found');
+    }
+
+    const [idCardFront, idCardBack] = await Promise.all([
+        this.uploadService.uploadFileLocal(files[0], 'id-cards'),
+        this.uploadService.uploadFileLocal(files[1], 'id-cards')
+    ]);
+
+    await this.usersRepository.updateUser(userId, {
+        idCardFront,
+        idCardBack
+    });
+
+    this.logger.log(`ID card (front & back) uploaded for user ID: ${userId}`);
+    return {
+        message: 'ID card images uploaded successfully',
+        idCardFront,
+        idCardBack
+    };
+}
+
+async verifyUser(id: string) {
+    const user = await this.usersRepository.findUserById(id);
+    if (!user) {
+        this.logger.warn(`User not found with ID: ${id}`);
+        throw new NotFoundException(`User not found`);
+    }
+    if (user.isVerified) {
+        this.logger.warn(`User already verified with ID: ${id}`);
+        throw new ConflictException(`User already verified`);
+    }
+    const updatedUser = await this.usersRepository.updateUser(id, { 
+        isVerified: true,
+        idCardBack: null,
+        idCardFront: null,
+    });
+    this.logger.log(`User verified with ID: ${id}`);
+    return updatedUser;
+}
+
 
     
 }
