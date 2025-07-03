@@ -14,6 +14,7 @@ import {
   EmailAlreadyVerifiedException,
   InvalidTokenException,
   TokenExpiredException,
+  UserNotActiveException,
 } from './exceptions/auth.exceptions';
 
 describe('AuthService', () => {
@@ -96,6 +97,7 @@ describe('AuthService', () => {
       usersService.findUserByEmail.mockResolvedValue({
         password: 'hash',
         verified_email: true,
+        isActive: true,
       } as any);
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
       await expect(service.login('x', 'y')).rejects.toBeInstanceOf(InvalidCredentialsException);
@@ -105,13 +107,24 @@ describe('AuthService', () => {
       usersService.findUserByEmail.mockResolvedValue({
         password: 'hash',
         verified_email: false,
+        isActive: true,
       } as any);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       await expect(service.login('x', 'y')).rejects.toBeInstanceOf(EmailNotVerifiedException);
     });
 
-    it('returns tokens on success', async () => {
-      const user = { id: '1', email: 'a@b.com', role: 'user', password: 'hash', verified_email: true } as any;
+    it('throws UserNotActiveException if user not active', async () => {
+      usersService.findUserByEmail.mockResolvedValue({
+        password: 'hash',
+        verified_email: true,
+        isActive: false,
+      } as any);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      await expect(service.login('x', 'y')).rejects.toBeInstanceOf(UserNotActiveException);
+    });
+
+    it('returns tokens and user on success', async () => {
+      const user = { id: '1', email: 'a@b.com', role: 'user', password: 'hash', verified_email: true, isActive: true } as any;
       usersService.findUserByEmail.mockResolvedValue(user);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       jwtService.signAsync
@@ -124,6 +137,7 @@ describe('AuthService', () => {
       });
       expect(res).toEqual({
         tokens: { access_token: 'access_token', refresh_token: 'refresh_token' },
+        user: user,
       });
     });
   });

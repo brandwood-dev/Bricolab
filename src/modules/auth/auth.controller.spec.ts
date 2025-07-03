@@ -7,6 +7,9 @@ import { LoginDto } from '../users/dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { EmailDto } from '../users/dto/email.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { plainToInstance } from 'class-transformer';
+import { UserResponseDto } from '../users/dto/user-response.dto';
+import { UserType, Country, Prefix, Role } from '@prisma/client';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -59,12 +62,14 @@ describe('AuthController', () => {
       const createUserDto: CreateUserDto = {
         email: 'test@test.com',
         password: 'Strong1!',
-        type: 'CLIENT' as any,
+        type: UserType.PARTICULIER,
         firstName: 'John',
         lastName: 'Doe',
-        country: 'TUNISIA' as any,
-        prefix: 'PLUS216' as any,
+        country: Country.Kuwait,
+        prefix: Prefix.PLUS_965,
         phoneNumber: 12345678,
+        verify_token: null,
+        verified_email: false,
       };
 
       const mockResult = {
@@ -76,24 +81,27 @@ describe('AuthController', () => {
       const result = await controller.register(createUserDto);
 
       expect(authService.register).toHaveBeenCalledWith(createUserDto);
-      expect(result).toEqual(mockResult);
+      expect(result).toEqual(plainToInstance(UserResponseDto, mockResult));
     });
 
     it('should throw error when registration fails', async () => {
       const createUserDto: CreateUserDto = {
         email: 'test@test.com',
         password: 'weak',
-        type: 'CLIENT' as any,
+        type: UserType.PARTICULIER,
         firstName: 'John',
         lastName: 'Doe',
-        country: 'TUNISIA' as any,
-        prefix: 'PLUS216' as any,
+        country: Country.Kuwait,
+        prefix: Prefix.PLUS_965,
         phoneNumber: 12345678,
+        verify_token: null,
+        verified_email: false,
       };
 
       authService.register.mockRejectedValue(new Error('Registration failed'));
 
       await expect(controller.register(createUserDto)).rejects.toThrow('Registration failed');
+      expect(authService.register).toHaveBeenCalledWith(createUserDto);
     });
   });
 
@@ -104,14 +112,38 @@ describe('AuthController', () => {
         password: 'Strong1!',
       };
 
-      const mockTokens = {
+      const mockUser = {
+        id: '1',
+        email: 'test@test.com',
+        password: 'hashedpassword',
+        type: UserType.PARTICULIER,
+        firstName: 'John',
+        lastName: 'Doe',
+        country: Country.Kuwait,
+        prefix: Prefix.PLUS_965,
+        phoneNumber: 12345678,
+        verify_token: null,
+        verified_email: true,
+        reset_token: null,
+        reset_token_expiry: null,
+        role: Role.USER,
+        refresh_token: null,
+        profilePicture: null,
+        isActive: true,
+        isVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const mockResult = {
         tokens: {
           access_token: 'access_token_value',
           refresh_token: 'refresh_token_value',
         },
+        user: mockUser,
       };
 
-      authService.login.mockResolvedValue(mockTokens);
+      authService.login.mockResolvedValue(mockResult);
       const res = mockResponse();
 
       await controller.login(loginDto, res);
@@ -124,6 +156,7 @@ describe('AuthController', () => {
       }));
       expect(res.json).toHaveBeenCalledWith({
         access_token: 'access_token_value',
+        user: plainToInstance(UserResponseDto, mockUser),
       });
     });
 
@@ -137,6 +170,7 @@ describe('AuthController', () => {
       const res = mockResponse();
 
       await expect(controller.login(loginDto, res)).rejects.toThrow('Invalid credentials');
+      expect(authService.login).toHaveBeenCalledWith(loginDto.email, loginDto.password);
     });
   });
 

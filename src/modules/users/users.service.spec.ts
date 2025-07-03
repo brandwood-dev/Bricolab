@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, NotFoundException, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { Prisma, User, UserType, Country, Prefix, Role } from '@prisma/client';
 import { UsersService } from './users.service';
 import { UsersRepository } from './users.repository';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UplaodService } from '../uplaod/uplaod.service';
+import { MailerService } from '../mailer/mailer.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -28,6 +29,8 @@ describe('UsersService', () => {
     role: Role.USER,
     refresh_token: null,
     profilePicture: null,
+    isActive: true,
+    isVerified: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -66,12 +69,16 @@ describe('UsersService', () => {
     findUserByEmail: jest.fn(),
     updateUser: jest.fn(),
     findUserByRefreshToken: jest.fn(),
+    getUsers: jest.fn(),
+    deleteUser: jest.fn(),
   };
 
   const mockUplaodService = {
-    uploadProfilePicture: jest.fn(),
-    deleteProfilePicture: jest.fn(),
-    
+    uploadFileLocal: jest.fn(),
+  };
+
+  const mockMailerService = {
+    send: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -85,6 +92,10 @@ describe('UsersService', () => {
         {
           provide: UplaodService,
           useValue: mockUplaodService,
+        },
+        {
+          provide: MailerService,
+          useValue: mockMailerService,
         },
       ],
     }).compile();
@@ -230,6 +241,188 @@ describe('UsersService', () => {
         NotFoundException
       );
       expect(repository.findUserByRefreshToken).toHaveBeenCalledWith('invalid-token');
+    });
+  });
+
+  describe('uploadProfilePicture', () => {
+    const mockFile = {
+      fieldname: 'profilePicture',
+      originalname: 'test.jpg',
+      encoding: '7bit',
+      mimetype: 'image/jpeg',
+      buffer: Buffer.from('fake image data'),
+      size: 1024,
+    } as Express.Multer.File;
+
+    it('should upload profile picture successfully', async () => {
+      const imageUrl = '/uploads/profile-pictures/test.jpg';
+      mockUsersRepository.findUserById.mockResolvedValue(mockUser);
+      mockUplaodService.uploadFileLocal.mockResolvedValue(imageUrl);
+      mockUsersRepository.updateUser.mockResolvedValue({ ...mockUser, profilePicture: imageUrl });
+
+      const result = await service.uploadProfilePicture('1', mockFile);
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(mockUplaodService.uploadFileLocal).toHaveBeenCalledWith(mockFile, 'profile-pictures');
+      expect(repository.updateUser).toHaveBeenCalledWith('1', { profilePicture: imageUrl });
+      expect(result).toEqual({
+        message: 'Profile picture uploaded successfully',
+        imageUrl: imageUrl
+      });
+    });
+
+    it('should throw BadRequestException when no file provided', async () => {
+      await expect(service.uploadProfilePicture('1', undefined as any)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockUsersRepository.findUserById.mockResolvedValue(null);
+
+      await expect(service.uploadProfilePicture('nonexistent', mockFile)).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('nonexistent');
+    });
+  });
+
+  describe('getUsers', () => {
+    it('should return paginated users', async () => {
+      const mockResult = {
+        data: [mockUser],
+        meta: {
+          total: 1,
+          page: 1,
+          limit: 10,
+          totalPages: 1
+        }
+      };
+      mockUsersRepository.getUsers.mockResolvedValue(mockResult);
+
+      const result = await service.getUsers(1, 10, 'search');
+
+      expect(repository.getUsers).toHaveBeenCalledWith(1, 10, 'search');
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should return paginated users without search', async () => {
+      const mockResult = {
+        data: [mockUser],
+        meta: {
+          total: 1,
+          page: 1,
+          limit: 10,
+          totalPages: 1
+        }
+      };
+      mockUsersRepository.getUsers.mockResolvedValue(mockResult);
+
+      const result = await service.getUsers(1, 10);
+
+      expect(repository.getUsers).toHaveBeenCalledWith(1, 10, undefined);
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('deleteUser', () => {
+    const motive = 'Account violation';
+
+    it('should delete user and send email successfully', async () => {
+      mockUsersRepository.deleteUser.mockResolvedValue(mockUser);
+      mockMailerService.send.mockResolvedValue(true);
+
+      const result = await service.deleteUser('1', motive);
+
+      expect(repository.deleteUser).toHaveBeenCalledWith('1');
+      expect(mockMailerService.send).toHaveBeenCalledWith(
+        mockUser.email,
+        'Suppression de votre compte',
+        expect.any(String)
+      );
+      expect(result).toEqual(mockUser);
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockUsersRepository.deleteUser.mockResolvedValue(null);
+
+      await expect(service.deleteUser('nonexistent', motive)).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.deleteUser).toHaveBeenCalledWith('nonexistent');
+    });
+  });
+
+  describe('changeUserStatus', () => {
+    const motive = 'Account review completed';
+
+    it('should activate inactive user and send email', async () => {
+      const inactiveUser = { ...mockUser, isActive: false };
+      const activatedUser = { ...mockUser, isActive: true };
+      
+      mockUsersRepository.findUserById.mockResolvedValue(inactiveUser);
+      mockUsersRepository.updateUser.mockResolvedValue(activatedUser);
+      mockMailerService.send.mockResolvedValue(true);
+
+      const result = await service.changeUserStatus('1', motive);
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(repository.updateUser).toHaveBeenCalledWith('1', { isActive: true });
+      expect(mockMailerService.send).toHaveBeenCalledWith(
+        inactiveUser.email,
+        'compte activé',
+        expect.any(String)
+      );
+      expect(result).toEqual(activatedUser);
+    });
+
+    it('should deactivate active user and send email', async () => {
+      const activeUser = { ...mockUser, isActive: true };
+      const deactivatedUser = { ...mockUser, isActive: false };
+      
+      mockUsersRepository.findUserById.mockResolvedValue(activeUser);
+      mockUsersRepository.updateUser.mockResolvedValue(deactivatedUser);
+      mockMailerService.send.mockResolvedValue(true);
+
+      const result = await service.changeUserStatus('1', motive);
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(repository.updateUser).toHaveBeenCalledWith('1', { isActive: false });
+      expect(mockMailerService.send).toHaveBeenCalledWith(
+        activeUser.email,
+        'compte désactivé',
+        expect.any(String)
+      );
+      expect(result).toEqual(deactivatedUser);
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockUsersRepository.findUserById.mockResolvedValue(null);
+
+      await expect(service.changeUserStatus('nonexistent', motive)).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('nonexistent');
+    });
+
+    it('should change status without motive', async () => {
+      const inactiveUser = { ...mockUser, isActive: false };
+      const activatedUser = { ...mockUser, isActive: true };
+      
+      mockUsersRepository.findUserById.mockResolvedValue(inactiveUser);
+      mockUsersRepository.updateUser.mockResolvedValue(activatedUser);
+      mockMailerService.send.mockResolvedValue(true);
+
+      const result = await service.changeUserStatus('1');
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(repository.updateUser).toHaveBeenCalledWith('1', { isActive: true });
+      expect(mockMailerService.send).toHaveBeenCalledWith(
+        inactiveUser.email,
+        'compte activé',
+        expect.any(String)
+      );
+      expect(result).toEqual(activatedUser);
     });
   });
 
