@@ -7,6 +7,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UplaodService } from '../uplaod/uplaod.service';
 import { MailerService } from '../mailer/mailer.service';
+import { AccountDeletionRequestRepository } from './account_deletion_requests.repository';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -15,6 +16,7 @@ describe('UsersService', () => {
   const mockUser: User = {
     id: '1',
     email: 'test@example.com',
+    newEmail: null,
     password: 'hashedpassword',
     type: UserType.PARTICULIER,
     firstName: 'John',
@@ -22,6 +24,7 @@ describe('UsersService', () => {
     country: Country.Kuwait,
     prefix: Prefix.PLUS_965,
     phoneNumber: 12345678,
+    address: '123 Main St',
     verify_token: null,
     verified_email: false,
     reset_token: null,
@@ -43,6 +46,7 @@ describe('UsersService', () => {
     type: UserType.PARTICULIER,
     firstName: 'John',
     lastName: 'Doe',
+    address: '123 Main St',
     country: Country.Kuwait,
     prefix: Prefix.PLUS_965,
     phoneNumber: 12345678,
@@ -71,10 +75,19 @@ describe('UsersService', () => {
     createUser: jest.fn(),
     findUserById: jest.fn(),
     findUserByEmail: jest.fn(),
+    findUserByNewEmail: jest.fn(),
     updateUser: jest.fn(),
     findUserByRefreshToken: jest.fn(),
     getUsers: jest.fn(),
     deleteUser: jest.fn(),
+  };
+
+  const mockAccountDeletionRequestRepository = {
+    createRequest: jest.fn(),
+    findPendingRequests: jest.fn(),
+    findPendingDeletionRequestByUserId: jest.fn(),
+    markReviewed: jest.fn(),
+    rejectRequest: jest.fn(),
   };
 
   const mockUplaodService = {
@@ -100,6 +113,10 @@ describe('UsersService', () => {
         {
           provide: MailerService,
           useValue: mockMailerService,
+        },
+        {
+          provide: AccountDeletionRequestRepository,
+          useValue: mockAccountDeletionRequestRepository,
         },
       ],
     }).compile();
@@ -330,13 +347,11 @@ describe('UsersService', () => {
   });
 
   describe('deleteUser', () => {
-    const motive = 'Account violation';
-
     it('should delete user and send email successfully', async () => {
       mockUsersRepository.deleteUser.mockResolvedValue(mockUser);
       mockMailerService.send.mockResolvedValue(true);
 
-      const result = await service.deleteUser('1', motive);
+      const result = await service.deleteUser('1');
 
       expect(repository.deleteUser).toHaveBeenCalledWith('1');
       expect(mockMailerService.send).toHaveBeenCalledWith(
@@ -350,7 +365,7 @@ describe('UsersService', () => {
     it('should throw NotFoundException when user not found', async () => {
       mockUsersRepository.deleteUser.mockResolvedValue(null);
 
-      await expect(service.deleteUser('nonexistent', motive)).rejects.toThrow(
+      await expect(service.deleteUser('nonexistent')).rejects.toThrow(
         NotFoundException
       );
       expect(repository.deleteUser).toHaveBeenCalledWith('nonexistent');
@@ -547,6 +562,240 @@ describe('UsersService', () => {
         ConflictException
       );
       expect(repository.findUserById).toHaveBeenCalledWith('1');
+    });
+  });
+
+  describe('findDeletionRequestByUserId', () => {
+    it('should return deletion request when found', async () => {
+      const mockRequest = {
+        id: 'request-1',
+        user_id: '1',
+        status: 'PENDING',
+        requested_at: new Date(),
+        reviewed_by_admin_id: null,
+        reviewed_at: null,
+        user: mockUser,
+        reviewed_by_admin: null,
+      };
+      
+      mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId.mockResolvedValue(mockRequest);
+
+      const result = await service.findDeletionRequestByUserId('1');
+
+      expect(mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId).toHaveBeenCalledWith('1');
+      expect(result).toEqual(mockRequest);
+    });
+
+    it('should return null when no deletion request found', async () => {
+      mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId.mockResolvedValue(null);
+
+      const result = await service.findDeletionRequestByUserId('nonexistent');
+
+      expect(mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId).toHaveBeenCalledWith('nonexistent');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findUserByNewEmail', () => {
+    it('should return a user when found by new email', async () => {
+      const userWithNewEmail = { ...mockUser, newEmail: 'new@example.com' };
+      mockUsersRepository.findUserByNewEmail.mockResolvedValue(userWithNewEmail);
+
+      const result = await service.findUserByNewEmail('new@example.com');
+
+      expect(repository.findUserByNewEmail).toHaveBeenCalledWith('new@example.com');
+      expect(result).toEqual(userWithNewEmail);
+    });
+
+    it('should return null when user not found by new email', async () => {
+      mockUsersRepository.findUserByNewEmail.mockResolvedValue(null);
+
+      const result = await service.findUserByNewEmail('nonexistent@example.com');
+
+      expect(repository.findUserByNewEmail).toHaveBeenCalledWith('nonexistent@example.com');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('requestAccountDeletion', () => {
+    it('should create account deletion request successfully', async () => {
+      mockUsersRepository.findUserById.mockResolvedValue(mockUser);
+      mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId.mockResolvedValue(null);
+      mockAccountDeletionRequestRepository.createRequest.mockResolvedValue({
+        id: 'request-1',
+        user_id: '1',
+        status: 'PENDING',
+        requested_at: new Date(),
+        reviewed_by_admin_id: null,
+        reviewed_at: null,
+      });
+
+      const result = await service.requestAccountDeletion('1');
+
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId).toHaveBeenCalledWith('1');
+      expect(mockAccountDeletionRequestRepository.createRequest).toHaveBeenCalledWith('1');
+      expect(result).toEqual({
+        message: 'Account deletion request created successfully. Please wait for admin approval.'
+      });
+    });
+
+    it('should throw NotFoundException when user not found', async () => {
+      mockUsersRepository.findUserById.mockResolvedValue(null);
+
+      await expect(service.requestAccountDeletion('nonexistent')).rejects.toThrow(
+        NotFoundException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('nonexistent');
+    });
+
+    it('should throw ConflictException when deletion request already exists', async () => {
+      const existingRequest = {
+        id: 'request-1',
+        user_id: '1',
+        status: 'PENDING',
+        requested_at: new Date(),
+        reviewed_by_admin_id: null,
+        reviewed_at: null,
+      };
+      
+      mockUsersRepository.findUserById.mockResolvedValue(mockUser);
+      mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId.mockResolvedValue(existingRequest);
+
+      await expect(service.requestAccountDeletion('1')).rejects.toThrow(
+        ConflictException
+      );
+      expect(repository.findUserById).toHaveBeenCalledWith('1');
+      expect(mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId).toHaveBeenCalledWith('1');
+    });
+  });
+
+  describe('findPendingDeletionRequests', () => {
+    it('should return pending deletion requests', async () => {
+      const mockRequests = [
+        {
+          id: 'request-1',
+          user_id: '1',
+          status: 'PENDING',
+          requested_at: new Date(),
+          reviewed_by_admin_id: null,
+          reviewed_at: null,
+          user: mockUser,
+          reviewed_by_admin: null,
+        }
+      ];
+      
+      mockAccountDeletionRequestRepository.findPendingRequests.mockResolvedValue(mockRequests);
+
+      const result = await service.findPendingDeletionRequests();
+
+      expect(mockAccountDeletionRequestRepository.findPendingRequests).toHaveBeenCalled();
+      expect(result).toEqual(mockRequests);
+    });
+
+    it('should return empty array when no pending requests found', async () => {
+      mockAccountDeletionRequestRepository.findPendingRequests.mockResolvedValue([]);
+
+      const result = await service.findPendingDeletionRequests();
+
+      expect(mockAccountDeletionRequestRepository.findPendingRequests).toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when null is returned', async () => {
+      mockAccountDeletionRequestRepository.findPendingRequests.mockResolvedValue(null);
+
+      const result = await service.findPendingDeletionRequests();
+
+      expect(mockAccountDeletionRequestRepository.findPendingRequests).toHaveBeenCalled();
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('rejectDeletionRequest', () => {
+    const adminId = 'admin-1';
+    const reason = 'Request does not meet criteria';
+    const mockRequest = {
+      id: 'request-1',
+      user_id: '1',
+      status: 'PENDING',
+      requested_at: new Date(),
+      reviewed_by_admin_id: null,
+      reviewed_at: null,
+      user: mockUser,
+      reviewed_by_admin: null,
+    };
+
+    it('should reject deletion request and send email successfully', async () => {
+      mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId.mockResolvedValue(mockRequest);
+      mockAccountDeletionRequestRepository.rejectRequest.mockResolvedValue({
+        ...mockRequest,
+        status: 'REJECTED',
+        reviewed_by_admin_id: adminId,
+        reviewed_at: new Date(),
+      });
+      mockMailerService.send.mockResolvedValue(true);
+
+      const result = await service.rejectDeletionRequest('request-1', adminId, reason);
+
+      expect(mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId).toHaveBeenCalledWith('request-1');
+      expect(mockAccountDeletionRequestRepository.rejectRequest).toHaveBeenCalledWith('request-1', adminId);
+      expect(mockMailerService.send).toHaveBeenCalledWith(
+        mockUser.email,
+        'Account Deletion Request Rejected',
+        expect.any(String)
+      );
+      expect(result).toEqual({
+        message: 'Account deletion request rejected successfully'
+      });
+    });
+
+    it('should throw NotFoundException when deletion request not found', async () => {
+      mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId.mockResolvedValue(null);
+
+      await expect(service.rejectDeletionRequest('nonexistent', adminId, reason)).rejects.toThrow(
+        NotFoundException
+      );
+      expect(mockAccountDeletionRequestRepository.findPendingDeletionRequestByUserId).toHaveBeenCalledWith('nonexistent');
+    });
+  });
+
+  describe('updateUser with newEmail', () => {
+    it('should update user with new email and send verification email', async () => {
+      const updateData = { newEmail: 'newemail@example.com', email: 'newemail@example.com' };
+      const updatedUser = { 
+        ...mockUser, 
+        newEmail: 'newemail@example.com',
+        verify_token: expect.any(String),
+        verified_email: false 
+      };
+      
+      mockUsersRepository.updateUser
+        .mockResolvedValueOnce(updatedUser)
+        .mockResolvedValueOnce(updatedUser);
+      mockMailerService.send.mockResolvedValue(true);
+
+      const result = await service.updateUser('1', updateData);
+
+      expect(repository.updateUser).toHaveBeenCalledTimes(2);
+      expect(mockMailerService.send).toHaveBeenCalledWith(
+        'newemail@example.com',
+        'Verify your email',
+        expect.any(String)
+      );
+      expect(result).toEqual(updatedUser);
+    });
+
+    it('should update user without new email', async () => {
+      const updateData = { firstName: 'Jane' };
+      const updatedUser = { ...mockUser, firstName: 'Jane' };
+      
+      mockUsersRepository.updateUser.mockResolvedValue(updatedUser);
+
+      const result = await service.updateUser('1', updateData);
+
+      expect(repository.updateUser).toHaveBeenCalledWith('1', updateData);
+      expect(result).toEqual(updatedUser);
     });
   });
 

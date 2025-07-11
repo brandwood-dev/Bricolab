@@ -33,6 +33,10 @@ export class BaseUserDto {
   @IsNumber()
   phoneNumber: number;
 
+  @IsNotEmpty()
+  @IsString()
+  address: string;
+
   @IsString()
   @IsOptional()
   verify_token?: string | null;

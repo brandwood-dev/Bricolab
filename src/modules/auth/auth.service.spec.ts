@@ -32,6 +32,7 @@ describe('AuthService', () => {
           provide: UsersService,
           useValue: {
             findUserByEmail: jest.fn(),
+            findUserByNewEmail: jest.fn(),
             createUser: jest.fn(),
             updateUser: jest.fn(),
             findUserById: jest.fn(),
@@ -53,6 +54,9 @@ describe('AuthService', () => {
     configService.get.mockReturnValue('10');
     jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashed' as never);
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
+
+    // Reset all mocks before each test
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -75,6 +79,7 @@ describe('AuthService', () => {
 
     it('creates user and sends verification email', async () => {
       usersService.findUserByEmail.mockResolvedValue(null);
+      usersService.findUserByNewEmail.mockResolvedValue(null);
       usersService.createUser.mockResolvedValue({ id: '1', email: 'a@b.com' } as any);
       const res = await service.register({ email: 'a@b.com', password: 'Strong1!' } as any);
       expect(usersService.createUser).toHaveBeenCalledWith(
@@ -143,24 +148,28 @@ describe('AuthService', () => {
   });
 
   describe('verifyEmail', () => {
-    it('throws NotFoundException if user not found', async () => {
+    it('throws NotFoundException if user not found by email or newEmail', async () => {
       usersService.findUserByEmail.mockResolvedValue(null);
+      usersService.findUserByNewEmail.mockResolvedValue(null);
       await expect(service.verifyEmail('test@test.com', 'token')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws EmailAlreadyVerifiedException if email already verified', async () => {
-      usersService.findUserByEmail.mockResolvedValue({ verified_email: true } as any);
-      await expect(service.verifyEmail('test@test.com', 'token')).rejects.toBeInstanceOf(EmailAlreadyVerifiedException);
-    });
-
-    it('throws InvalidTokenException if token invalid', async () => {
+    it('throws InvalidTokenException if token does not match', async () => {
       usersService.findUserByEmail.mockResolvedValue({ verified_email: false, verify_token: 'different' } as any);
+      usersService.findUserByNewEmail.mockResolvedValue(null);
       await expect(service.verifyEmail('test@test.com', 'token')).rejects.toBeInstanceOf(InvalidTokenException);
     });
 
-    it('verifies email and returns tokens', async () => {
+    it('throws EmailAlreadyVerifiedException if email already verified (registration context)', async () => {
+      usersService.findUserByEmail.mockResolvedValue({ verified_email: true, verify_token: 'token' } as any);
+      usersService.findUserByNewEmail.mockResolvedValue(null);
+      await expect(service.verifyEmail('test@test.com', 'token')).rejects.toBeInstanceOf(EmailAlreadyVerifiedException);
+    });
+
+    it('verifies email and returns tokens (registration context)', async () => {
       const user = { id: '1', email: 'test@test.com', role: 'user', verified_email: false, verify_token: 'token' } as any;
       usersService.findUserByEmail.mockResolvedValue(user);
+      usersService.findUserByNewEmail.mockResolvedValue(null);
       jwtService.signAsync
         .mockResolvedValueOnce('access_token')
         .mockResolvedValueOnce('refresh_token');
@@ -171,6 +180,43 @@ describe('AuthService', () => {
       });
       expect(res).toEqual({
         message: 'Email verified successfully',
+        tokens: { access_token: 'access_token', refresh_token: 'refresh_token' },
+      });
+    });
+
+    it('throws InvalidTokenException if newEmail does not match token email (email update context)', async () => {
+      usersService.findUserByEmail.mockResolvedValue(null);
+      usersService.findUserByNewEmail.mockResolvedValue({ 
+        id: '1', 
+        email: 'old@test.com', 
+        newEmail: 'different@test.com', 
+        verify_token: 'token' 
+      } as any);
+      await expect(service.verifyEmail('new@test.com', 'token')).rejects.toBeInstanceOf(InvalidTokenException);
+    });
+
+    it('verifies new email and updates user (email update context)', async () => {
+      const user = { 
+        id: '1', 
+        email: 'old@test.com', 
+        newEmail: 'new@test.com', 
+        role: 'user', 
+        verify_token: 'token' 
+      } as any;
+      usersService.findUserByEmail.mockResolvedValue(null);
+      usersService.findUserByNewEmail.mockResolvedValue(user);
+      jwtService.signAsync
+        .mockResolvedValueOnce('access_token')
+        .mockResolvedValueOnce('refresh_token');
+      const res = await service.verifyEmail('new@test.com', 'token');
+      expect(usersService.updateUser).toHaveBeenCalledWith(user.id, {
+        email: user.newEmail,
+        newEmail: null,
+        verified_email: true,
+        verify_token: null,
+      });
+      expect(res).toEqual({
+        message: 'Email updated and verified successfully',
         tokens: { access_token: 'access_token', refresh_token: 'refresh_token' },
       });
     });
@@ -196,6 +242,37 @@ describe('AuthService', () => {
       });
       expect(mailerService.send).toHaveBeenCalled();
       expect(res).toEqual({ message: 'Verification email sent successfully' });
+    });
+  });
+
+  describe('verifyResetPasswordToken', () => {
+    it('throws NotFoundException if user not found', async () => {
+      usersService.findUserByEmail.mockResolvedValue(null);
+      await expect(service.verifyResetPasswordToken('test@test.com', 'token')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws InvalidTokenException if token invalid', async () => {
+      usersService.findUserByEmail.mockResolvedValue({ reset_token: 'different' } as any);
+      await expect(service.verifyResetPasswordToken('test@test.com', 'token')).rejects.toBeInstanceOf(InvalidTokenException);
+    });
+
+    it('throws TokenExpiredException if token expired', async () => {
+      const expiredDate = new Date(Date.now() - 1000);
+      usersService.findUserByEmail.mockResolvedValue({ reset_token: 'token', reset_token_expiry: expiredDate } as any);
+      await expect(service.verifyResetPasswordToken('test@test.com', 'token')).rejects.toBeInstanceOf(TokenExpiredException);
+    });
+
+    it('returns success message if token is valid', async () => {
+      const futureDate = new Date(Date.now() + 1000);
+      usersService.findUserByEmail.mockResolvedValue({ reset_token: 'token', reset_token_expiry: futureDate } as any);
+      const res = await service.verifyResetPasswordToken('test@test.com', 'token');
+      expect(res).toEqual({ message: 'Reset password token is valid' });
+    });
+
+    it('returns success message if token is valid and no expiry date', async () => {
+      usersService.findUserByEmail.mockResolvedValue({ reset_token: 'token', reset_token_expiry: null } as any);
+      const res = await service.verifyResetPasswordToken('test@test.com', 'token');
+      expect(res).toEqual({ message: 'Reset password token is valid' });
     });
   });
 

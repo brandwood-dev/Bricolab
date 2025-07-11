@@ -7,13 +7,18 @@ import { UplaodService } from '../uplaod/uplaod.service';
 import { MailerService } from '../mailer/mailer.service';
 import { accountStatusTemplate } from '../mailer/mail_templates/change_status_email';
 import { deleteAccountTemplate } from '../mailer/mail_templates/delete_email';
+import { randomBytes } from 'crypto';
+import { verifyEmailTemplate } from '../mailer/mail_templates';
+import {AccountDeletionRequestRepository} from './account_deletion_requests.repository';
+import { rejectAccountDeletionTemplate } from '../mailer/mail_templates/reject_delete_email';
 @Injectable()
 export class UsersService {
     private readonly logger = new Logger(UsersService.name);
     constructor(
         private readonly usersRepository: UsersRepository,
         private readonly uploadService: UplaodService,
-        private readonly mailerService: MailerService
+        private readonly mailerService: MailerService,
+        private readonly accountDeletionRequestRepository: AccountDeletionRequestRepository,
     ){}
     /**
      * Create a new user
@@ -47,6 +52,14 @@ export class UsersService {
         return user;
     }
 
+    async findDeletionRequestByUserId(userId: string){
+        const request = await this.accountDeletionRequestRepository.findPendingDeletionRequestByUserId(userId);
+        if(!request){
+            return null;
+        }
+        return request;
+    }
+
     /**
      * Find a user by email
      * @param email
@@ -61,6 +74,14 @@ export class UsersService {
         }
         return user;
     }
+    async findUserByNewEmail(newEmail: string): Promise<User | null> {
+        const user = await this.usersRepository.findUserByNewEmail(newEmail);
+        if(!user){
+            this.logger.warn(`User not found with new email: ${newEmail}`);
+            return null;
+        }
+        return user;
+    }
 
     /**
      * Update a user
@@ -70,6 +91,23 @@ export class UsersService {
      */
     async updateUser(id: string, data: Partial<UpdateUserDto>): Promise<User> {
     try {
+        if(data.newEmail){
+            const pattern = /^(?=.*[a-z])(?=.*\d)[a-z0-9]{6}$/;
+            let token: string;
+            do {
+                token = randomBytes(3).toString('hex');
+            } while (!pattern.test(token));
+            const user = await this.usersRepository.updateUser(id, { newEmail: data.email, verify_token: token, verified_email: false });
+            this.logger.log('User', user);
+            if (!user) {
+                this.logger.warn(`User not found during update`);
+                throw new NotFoundException(`User not found`);
+            }
+            let html = verifyEmailTemplate;
+            html = html.replaceAll('&CODE&', token);
+            await this.mailerService.send(data.newEmail, 'Verify your email', html);
+            
+        }
         const user = await this.usersRepository.updateUser(id, data);
 
         if (!user) {
@@ -123,14 +161,14 @@ export class UsersService {
         return result;
     }
 
-    async deleteUser(id: string, motive: string): Promise<User> {
+    async deleteUser(id: string): Promise<User> {
     const user = await this.usersRepository.deleteUser(id);
         if(!user) {
             this.logger.warn(`User not found with ID: ${id}`);
             throw new NotFoundException(`User not found`);
         }
         this.logger.log(`User deleted with ID: ${id}`);
-        await this.mailerService.send(user.email, 'Suppression de votre compte',deleteAccountTemplate(motive));
+        await this.mailerService.send(user.email, 'Suppression de votre compte',deleteAccountTemplate());
         return user;
     }
 
@@ -196,6 +234,46 @@ async verifyUser(id: string) {
     return updatedUser;
 }
 
+async requestAccountDeletion(userId: string) {
+    const user = await this.usersRepository.findUserById(userId);
+    if (!user) {
+        this.logger.warn(`User not found with ID: ${userId}`);
+        throw new NotFoundException(`User not found`);
+    }
+    const existingRequest = await this.accountDeletionRequestRepository.findPendingDeletionRequestByUserId(userId);
+    if (existingRequest) {
+        this.logger.warn(`Deletion request already exists for user ID: ${userId}`);
+        throw new ConflictException('You already have a pending account deletion request');
+    }
 
+    await this.accountDeletionRequestRepository.createRequest(userId);
+    return {
+        message: 'Account deletion request created successfully. Please wait for admin approval.'
+    }
+}
+
+async findPendingDeletionRequests() {
+    const requests = await this.accountDeletionRequestRepository.findPendingRequests();
+    if (!requests || requests.length === 0) {
+        this.logger.warn('No pending deletion requests found');
+        return [];
+    }
+    return requests;
+}
+
+async rejectDeletionRequest(requestId: string, adminId: string, reason: string) {
+    const request = await this.accountDeletionRequestRepository.findPendingDeletionRequestByUserId(requestId);
+    if (!request) {
+        this.logger.warn(`Deletion request not found with ID: ${requestId}`);
+        throw new NotFoundException(`Deletion request not found`);
+    }
+    await this.accountDeletionRequestRepository.rejectRequest(requestId, adminId);
+    const html = rejectAccountDeletionTemplate(reason);
+    await this.mailerService.send(request.user.email, 'Account Deletion Request Rejected', html);
+    this.logger.log(`Deletion request rejected with ID: ${requestId}`);
+    return {
+        message: 'Account deletion request rejected successfully'
+    };
+}
     
 }

@@ -11,6 +11,8 @@ import { ThrottlerBehindProxyGuard } from './common/guards/throttler-behind-prox
 import { UplaodModule } from './modules/uplaod/uplaod.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { BlogModule } from './modules/blog/blog.module';
+import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
   imports: [
@@ -22,20 +24,14 @@ import { join } from 'path';
     PrismaModule,
     UsersModule,
     MailerModule,
-    ThrottlerModule.forRoot({
-      throttlers: [
-    {
-      name: 'short',
-      ttl: 60000,
-      limit: 10,
-    },
-  ],
-    }),
+    ThrottlerModule.forRoot([]),
     UplaodModule,
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'),  
       serveRoot: '/uploads',                        
     }),
+    BlogModule,
+    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/bricolab')
   ],
   controllers: [],
   providers: [{

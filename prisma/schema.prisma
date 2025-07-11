@@ -33,6 +33,13 @@ enum Prefix {
   PLUS_973 @map("+973")
   PLUS_968 @map("+968")
 }
+
+enum DeletionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum Role {
   USER
   ADMIN
@@ -41,6 +48,7 @@ enum Role {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+  newEmail  String? @unique
   password  String
   type     UserType?
   firstName String
@@ -48,6 +56,7 @@ model User {
   country Country
   prefix    Prefix
   phoneNumber Int
+  address   String
   verify_token String?
   verified_email Boolean @default(false)
   reset_token      String?
@@ -61,4 +70,20 @@ model User {
   isVerified Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  account_deletion_requests         account_deletion_requests[]
+  reviewed_deletion_requests        account_deletion_requests[] @relation("AdminReview")
 }
+
+model account_deletion_requests{
+  id        String   @id @default(cuid())
+  user_id  String @unique
+  status DeletionStatus @default(PENDING)
+  requested_at DateTime @default(now())
+  reviewed_by_admin_id String? 
+  reviewed_at DateTime?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  reviewed_by_admin User? @relation("AdminReview", fields: [reviewed_by_admin_id], references: [id], onDelete: SetNull, onUpdate: Cascade)  
+  
+}
+

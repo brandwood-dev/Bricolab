@@ -39,6 +39,12 @@ export class UsersRepository {
         this.logger.log('Finding user by email: ' + email);
         return user;
     }
+    async findUserByNewEmail(newEmail: string): Promise<User | null> {
+        const user = await this.prisma.user.findUnique({
+            where: { newEmail },
+        });
+        return user;
+    }
 
     async updateUser(id: string, data: Partial<UpdateUserDto>): Promise<User> {
         const user =  this.prisma.user.update({

@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Logger, Patch, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Logger, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LoginDto } from '../users/dto/login.dto';
@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { UserResponseDto } from '../users/dto/user-response.dto';
+import { JwtAuthGuard } from '../../common/guards';
 
 
 @ApiTags('Authentication')
@@ -383,6 +384,7 @@ export class AuthController {
         });
     }
     @Post('logout')
+    @UseGuards(JwtAuthGuard)
     @ApiOperation({ 
         summary: 'User logout',
         description: 'Logs out the authenticated user and clears the refresh token cookie'
@@ -416,5 +418,13 @@ export class AuthController {
         return res.json({
             message: result.message,
         });
+    }
+    @Post('verify-forgot-password-token')
+    async verifyResetPasswordToken(@Body('token') token: string, @Body('email') email: string) {
+        const isValid = await this.authService.verifyResetPasswordToken(email, token);
+        if (!isValid) {
+            throw new ForbiddenException('Invalid or expired reset token');
+        }
+        return { message: 'Reset token is valid' };
     }
 }

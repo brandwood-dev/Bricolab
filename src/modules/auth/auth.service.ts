@@ -56,29 +56,58 @@ export class AuthService {
     }
 
     async verifyEmail(email: string, token: string) {
-        const user = await this.usersService.findUserByEmail(email);
-        if (!user) {
-            throw new NotFoundException('User not found');
+    // Try to find user by current email first
+    let user = await this.usersService.findUserByEmail(email);
+    let isEmailUpdate = false;
+    // If not found by current email, try to find by newEmail
+    if (!user) {
+        user = await this.usersService.findUserByNewEmail(email);
+        isEmailUpdate = true;
+    }
+    
+    if (!user) {
+        throw new NotFoundException('User not found');
+    }
+    
+    if (user.verify_token !== token) {
+        throw new InvalidTokenException();
+    }
+
+    if (isEmailUpdate) {
+        // Email update context - verifying new email
+        if (!user.newEmail || user.newEmail !== email) {
+            throw new InvalidTokenException();
         }
+        
+        // Update user with new email and mark as verified
+        await this.usersService.updateUser(user.id, {
+            email: user.newEmail,
+            newEmail: null,
+            verified_email: true,
+            verify_token: null, 
+        });
+
+    } else {
+        // New user registration context - verifying current email
         if (user.verified_email) {
             throw new EmailAlreadyVerifiedException();
         }
-        if (user.verify_token !== token) {
-            throw new InvalidTokenException();
-        }
+        
         // Update user to mark email as verified
         await this.usersService.updateUser(user.id, {
             verified_email: true,
             verify_token: null, 
         });
-        
-        const tokens = await this.generateTokens(user.id, user.email, user.role);
-        await this.updateRefreshToken(user.id, tokens.refresh_token);
-        return {
-            message: 'Email verified successfully',
-            tokens: tokens,
-        };
     }
+    
+    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    await this.updateRefreshToken(user.id, tokens.refresh_token);
+    
+    return {
+        message: isEmailUpdate ? 'Email updated and verified successfully' : 'Email verified successfully',
+        tokens: tokens,
+    };
+}
 
     // return user data with the access token 
     async login(email: string, password: string) {
@@ -120,6 +149,20 @@ export class AuthService {
         // Send verification email
         await this.sendVerificationEmail(user, verifyToken);
         return {message: 'Verification email sent successfully'};
+    }
+
+    async verifyResetPasswordToken(email: string, token: string): Promise<{message: string}> {
+        const user = await this.usersService.findUserByEmail(email);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        if (user.reset_token !== token) {
+            throw new InvalidTokenException();
+        }
+        if (user.reset_token_expiry && new Date()> new Date(user.reset_token_expiry)) {
+            throw new TokenExpiredException();
+        }
+        return { message: 'Reset password token is valid' };
     }
 
     async sendResetPasswordEmail(email: string): Promise<{message: string}> {
@@ -241,9 +284,9 @@ export class AuthService {
     private async generateTokens(userId: string, email: string, role: string ) {
         const payload = {
             sub: userId,
-            email: email,
-            role: role,
-        }
+            email,
+            role
+        };
         const [access_token, refresh_token] = await Promise.all([
             this.jwtService.signAsync(payload, {
                 secret: this.configService.get<string>('JWT_ACCESS_SECRET'),

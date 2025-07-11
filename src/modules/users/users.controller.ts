@@ -5,6 +5,7 @@ import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express
 import { AdminGuard, JwtAuthGuard } from '../../common/guards';
 import { UserResponseDto } from './dto/user-response.dto';
 import { plainToInstance } from 'class-transformer';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 const imageFileFilter = (req, file, callback) => {
   if (!file.mimetype.match(/\/(jpg|jpeg|png)$/)) {
@@ -22,18 +23,25 @@ export class UsersController {
         private readonly usersService: UsersService,
     ){}
 
+    @Get('me')
+    @UseGuards(JwtAuthGuard)
+    async getCurrentUser(@CurrentUser('id') id: string) {
+        const user =await this.usersService.findUserById(id);
+        const deletionRequest = await this.usersService.findDeletionRequestByUserId(id);
+        const response = plainToInstance(UserResponseDto,user,{
+            exposeUnsetFields: false,
+        });
+        response.hasDeletionRequest = !!deletionRequest && deletionRequest.status === 'PENDING';
+        return response;
+    }
+
     @Get(':id')
     async getUserById(@Param('id') id: string ) {
         const user = await this.usersService.findUserById(id);
         return plainToInstance(UserResponseDto,user);
     }
-    @Get('me')
-    @UseGuards(JwtAuthGuard)
-    async getCurrentUser(@CurrentUser('id') id: string) {
-        const user =await this.usersService.findUserById(id);
-        return plainToInstance(UserResponseDto,user);
-    }
-    @Post('profile-picture')
+    
+    @Patch('profile-picture')
     @UseInterceptors(FileInterceptor('file', {
         limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
         fileFilter: imageFileFilter,
@@ -64,10 +72,9 @@ export class UsersController {
     @Delete(':id')
     @UseGuards(AdminGuard)
     async deleteUser(
-        @Param('id') id: string,
-        @Body('motive') motive: string
+        @Param('id') userId: string,
     ) {
-        const user = await this.usersService.deleteUser(id,motive);
+        const user = await this.usersService.deleteUser(userId);
         return plainToInstance(UserResponseDto,user);
     }
     
@@ -104,5 +111,37 @@ export class UsersController {
         const user = await this.usersService.verifyUser(id);
         return plainToInstance(UserResponseDto, user);
     }
-    
+    @Patch()
+    async updateUser(@CurrentUser('id') userId: string, @Body() updateData: UpdateUserDto) {
+        const updatedUser = await this.usersService.updateUser(userId, updateData);
+        return plainToInstance(UserResponseDto, updatedUser);
+    }
+
+    @Post('request-account-deletion')
+    async requestAccountDeletion(@CurrentUser('id') userId: string) {
+        const result = await this.usersService.requestAccountDeletion(userId);
+        return {
+            ...result
+        };
+    }
+
+    @Get('pending-deletion-requests')
+    @UseGuards(AdminGuard)
+    async findPendingDeletionRequests() {
+        const requests = await this.usersService.findPendingDeletionRequests();
+        return requests.map(request => plainToInstance(UserResponseDto, request.user));
+    }
+
+    @Patch('reject-deletion-request/:id')
+    @UseGuards(AdminGuard)
+    async rejectDeletionRequest(
+        @Param('id') id: string,
+        @CurrentUser('id') adminId: string,
+        @Body('reason') reason: string = 'No reason provided'
+    ) {
+        const result = await this.usersService.rejectDeletionRequest(id, adminId,reason);
+        return { 
+            ...result
+        };
+    }
 }
