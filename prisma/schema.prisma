@@ -40,6 +40,7 @@ enum DeletionStatus {
   REJECTED
 }
 
+
 enum Role {
   USER
   ADMIN
@@ -48,7 +49,9 @@ enum Role {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
+
   newEmail  String? @unique
+
   password  String
   type     UserType?
   firstName String
@@ -56,7 +59,9 @@ model User {
   country Country
   prefix    Prefix
   phoneNumber Int
+
   address   String
+
   verify_token String?
   verified_email Boolean @default(false)
   reset_token      String?
@@ -72,7 +77,29 @@ model User {
   updatedAt DateTime @updatedAt
   account_deletion_requests         account_deletion_requests[]
   reviewed_deletion_requests        account_deletion_requests[] @relation("AdminReview")
+
 }
+enum ContactStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+model Contact {
+  id          String        @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String
+  subject     String
+  message     String
+  status      ContactStatus @default(NEW)
+  isRead      Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@map("contacts")
+}
+
 
 model account_deletion_requests{
   id        String   @id @default(cuid())
@@ -86,4 +113,5 @@ model account_deletion_requests{
   reviewed_by_admin User? @relation("AdminReview", fields: [reviewed_by_admin_id], references: [id], onDelete: SetNull, onUpdate: Cascade)  
   
 }
+
 
