@@ -9,8 +9,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerBehindProxyGuard } from './common/guards/throttler-behind-proxy.guard';
 import { UplaodModule } from './modules/uplaod/uplaod.module';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+import { ToolsModule } from './modules/tools/tools.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 
 @Module({
   imports: [
@@ -24,18 +24,21 @@ import { join } from 'path';
     MailerModule,
     ThrottlerModule.forRoot({
       throttlers: [
-    {
-      name: 'short',
-      ttl: 60000,
-      limit: 10,
-    },
-  ],
+        {
+          name: 'short',
+          ttl: 60000, // 1 minute
+          limit: 100, // 100 requests per minute
+        },
+        {
+          name: 'long',
+          ttl: 3600000, // 1 hour
+          limit: 1000, // 1000 requests per hour
+        },
+      ],
     }),
     UplaodModule,
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),  
-      serveRoot: '/uploads',                        
-    }),
+    ToolsModule,
+    FavoritesModule,
   ],
   controllers: [],
   providers: [{
