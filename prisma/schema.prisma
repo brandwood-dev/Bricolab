@@ -46,6 +46,43 @@ enum Role {
   ADMIN
 }
 
+// Tool Listing Enums
+enum ToolCategory {
+  JARDINAGE
+  BRICOLAGE
+  TRANSPORT
+  NETTOYAGE
+  EVENEMENTIEL
+}
+
+enum ToolStatus {
+  EN_ATTENTE
+  PUBLIE
+  REJETE
+  SUSPENDU
+}
+
+enum AvailabilityStatus {
+  DISPONIBLE
+  RESERVE
+  SUSPENDU
+  EN_ATTENTE
+}
+
+enum ModerationActionType {
+  APPROUVER
+  REJETER
+  SUPPRIMER
+}
+
+enum ToolCondition {
+  NEUF
+  TRES_BON
+  BON
+  MOYEN
+  MAUVAIS
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -75,10 +112,198 @@ model User {
   isVerified Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+
+  // Relations
+  tools Tool[]
+  moderationActions ModerationActionRecord[]
+  reviews Review[]
+  favorites Favorite[]
   account_deletion_requests         account_deletion_requests[]
   reviewed_deletion_requests        account_deletion_requests[] @relation("AdminReview")
 
 }
+
+// Tool Categories
+model Category {
+  id          String   @id @default(cuid())
+  name        ToolCategory @unique
+  displayName String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  subcategories Subcategory[]
+  tools         Tool[]
+}
+
+// Tool Subcategories
+model Subcategory {
+  id          String   @id @default(cuid())
+  name        String
+  displayName String
+  description String?
+  categoryId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tools    Tool[]
+
+  @@unique([name, categoryId])
+}
+
+// Tool Listings
+model Tool {
+  id                String   @id @default(cuid())
+  title             String
+  description       String
+  brand             String?
+  model             String?
+  year              Int?
+  condition         ToolCondition
+  pickupAddress     String
+  latitude         Float?
+  longitude        Float?
+  ownerInstructions String?
+  
+  // Pricing
+  basePrice         Float
+  depositAmount     Float
+  
+  // Status
+  publicationStatus ToolStatus @default(EN_ATTENTE)
+  availabilityStatus AvailabilityStatus @default(EN_ATTENTE)
+  
+  // Relations
+  categoryId        String
+  subcategoryId     String
+  ownerId           String
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  publishedAt       DateTime?
+  moderatedAt       DateTime?
+  
+  // Relations
+  category          Category @relation(fields: [categoryId], references: [id])
+  subcategory       Subcategory @relation(fields: [subcategoryId], references: [id])
+  owner             User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  photos            ToolPhoto[]
+  pricing           ToolPricing[]
+  availability      ToolAvailability[]
+  moderationActions ModerationActionRecord[]
+  reservations      Reservation[]
+  reviews           Review[]
+  favorites         Favorite[]
+}
+
+// Tool Photos
+model ToolPhoto {
+  id        String   @id @default(cuid())
+  url       String
+  filename  String
+  isPrimary Boolean  @default(false)
+  toolId    String
+  createdAt DateTime @default(now())
+  
+  // Relations
+  tool      Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+}
+
+// Tool Pricing Tiers
+model ToolPricing {
+  id          String   @id @default(cuid())
+  duration    Int      // Number of days
+  discount    Float    // Discount percentage
+  finalPrice  Float    // Calculated price after discount
+  toolId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  tool        Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+}
+
+// Tool Availability Calendar
+model ToolAvailability {
+  id        String   @id @default(cuid())
+  date      DateTime
+  isAvailable Boolean @default(true)
+  toolId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  tool      Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  
+  @@unique([toolId, date])
+}
+
+// Moderation Actions
+model ModerationActionRecord {
+  id          String           @id @default(cuid())
+  action      ModerationActionType
+  reasons     String[]         // Array of rejection/deletion reasons
+  comment     String?          // Additional comment
+  toolId      String
+  moderatorId String
+  createdAt   DateTime         @default(now())
+  
+  // Relations
+  tool        Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  moderator   User @relation(fields: [moderatorId], references: [id])
+}
+
+// Reviews
+model Review {
+  id          String   @id @default(cuid())
+  rating      Int
+  comment     String
+  toolId      String
+  reviewerId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  tool        Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  reviewer    User @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+}
+
+// Reservations (for future use)
+model Reservation {
+  id          String   @id @default(cuid())
+  startDate   DateTime
+  endDate     DateTime
+  totalPrice  Float
+  status      String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  toolId      String
+  renterId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  tool        Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+}
+
+// Favorites
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  toolId    String
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tool      Tool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, toolId])
+}
+
+  
 enum ContactStatus {
   NEW
   IN_PROGRESS
@@ -113,5 +338,4 @@ model account_deletion_requests{
   reviewed_by_admin User? @relation("AdminReview", fields: [reviewed_by_admin_id], references: [id], onDelete: SetNull, onUpdate: Cascade)  
   
 }
-
 

@@ -12,6 +12,9 @@ services:
       - .env
     networks:
       - bricolab-net
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./uploads:/app/uploads
 
   db:
     image: postgres:latest
