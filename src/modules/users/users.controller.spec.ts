@@ -13,6 +13,7 @@ describe('UsersController', () => {
   const mockUser: User = {
     id: '1',
     email: 'test@example.com',
+    newEmail: null,
     password: 'hashedpassword',
     type: UserType.PARTICULIER,
     firstName: 'John',
@@ -20,6 +21,7 @@ describe('UsersController', () => {
     country: Country.Kuwait,
     prefix: Prefix.PLUS_965,
     phoneNumber: 12345678,
+    address: '123 Main St',
     verify_token: null,
     verified_email: false,
     reset_token: null,
@@ -43,6 +45,11 @@ describe('UsersController', () => {
     changeUserStatus: jest.fn(),
     uploadIdCard: jest.fn(),
     verifyUser: jest.fn(),
+    updateUser: jest.fn(),
+    requestAccountDeletion: jest.fn(),
+    findPendingDeletionRequests: jest.fn(),
+    findDeletionRequestByUserId: jest.fn(),
+    rejectDeletionRequest: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -89,13 +96,45 @@ describe('UsersController', () => {
   });
 
   describe('getCurrentUser', () => {
-    it('should return current user', async () => {
+    it('should return current user with deletion request status', async () => {
+      const mockDeletionRequest = { status: 'PENDING' };
       mockUsersService.findUserById.mockResolvedValue(mockUser);
+      mockUsersService.findDeletionRequestByUserId.mockResolvedValue(mockDeletionRequest);
 
       const result = await controller.getCurrentUser('1');
 
       expect(service.findUserById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(plainToInstance(UserResponseDto, mockUser));
+      expect(service.findDeletionRequestByUserId).toHaveBeenCalledWith('1');
+      const expectedResult = plainToInstance(UserResponseDto, mockUser);
+      expectedResult.hasDeletionRequest = true;
+      expect(result).toEqual(expectedResult);
+    });
+
+    it('should return current user without deletion request', async () => {
+      mockUsersService.findUserById.mockResolvedValue(mockUser);
+      mockUsersService.findDeletionRequestByUserId.mockResolvedValue(null);
+
+      const result = await controller.getCurrentUser('1');
+
+      expect(service.findUserById).toHaveBeenCalledWith('1');
+      expect(service.findDeletionRequestByUserId).toHaveBeenCalledWith('1');
+      const expectedResult = plainToInstance(UserResponseDto, mockUser);
+      expectedResult.hasDeletionRequest = false;
+      expect(result).toEqual(expectedResult);
+    });
+
+    it('should return current user with rejected deletion request', async () => {
+      const mockDeletionRequest = { status: 'REJECTED' };
+      mockUsersService.findUserById.mockResolvedValue(mockUser);
+      mockUsersService.findDeletionRequestByUserId.mockResolvedValue(mockDeletionRequest);
+
+      const result = await controller.getCurrentUser('1');
+
+      expect(service.findUserById).toHaveBeenCalledWith('1');
+      expect(service.findDeletionRequestByUserId).toHaveBeenCalledWith('1');
+      const expectedResult = plainToInstance(UserResponseDto, mockUser);
+      expectedResult.hasDeletionRequest = false;
+      expect(result).toEqual(expectedResult);
     });
   });
 
@@ -180,14 +219,12 @@ describe('UsersController', () => {
   });
 
   describe('deleteUser', () => {
-    const motive = 'Account violation';
-
     it('should delete user successfully', async () => {
       mockUsersService.deleteUser.mockResolvedValue(mockUser);
 
-      const result = await controller.deleteUser('1', motive);
+      const result = await controller.deleteUser('1');
 
-      expect(service.deleteUser).toHaveBeenCalledWith('1', motive);
+      expect(service.deleteUser).toHaveBeenCalledWith('1');
       expect(result).toEqual(plainToInstance(UserResponseDto, mockUser));
     });
 
@@ -195,8 +232,8 @@ describe('UsersController', () => {
       const error = new Error('Delete failed');
       mockUsersService.deleteUser.mockRejectedValue(error);
 
-      await expect(controller.deleteUser('1', motive)).rejects.toThrow(error);
-      expect(service.deleteUser).toHaveBeenCalledWith('1', motive);
+      await expect(controller.deleteUser('1')).rejects.toThrow(error);
+      expect(service.deleteUser).toHaveBeenCalledWith('1');
     });
   });
 
@@ -304,6 +341,119 @@ describe('UsersController', () => {
         BadRequestException
       );
       expect(service.verifyUser).toHaveBeenCalledWith('nonexistent');
+    });
+  });
+
+  describe('updateUser', () => {
+    const mockUpdateUserDto = {
+      firstName: 'Jane',
+      lastName: 'Smith',
+      email: 'jane@example.com'
+    };
+
+    it('should update user successfully', async () => {
+      const updatedUser = { ...mockUser, ...mockUpdateUserDto };
+      mockUsersService.updateUser.mockResolvedValue(updatedUser);
+
+      const result = await controller.updateUser('1', mockUpdateUserDto);
+
+      expect(service.updateUser).toHaveBeenCalledWith('1', mockUpdateUserDto);
+      expect(result).toEqual(plainToInstance(UserResponseDto, updatedUser));
+    });
+
+    it('should handle update errors', async () => {
+      const error = new Error('Update failed');
+      mockUsersService.updateUser.mockRejectedValue(error);
+
+      await expect(controller.updateUser('1', mockUpdateUserDto)).rejects.toThrow(error);
+      expect(service.updateUser).toHaveBeenCalledWith('1', mockUpdateUserDto);
+    });
+  });
+
+  describe('requestAccountDeletion', () => {
+    it('should request account deletion successfully', async () => {
+      const mockResult = {
+        message: 'Account deletion request submitted successfully',
+        requestId: 'req-123'
+      };
+      mockUsersService.requestAccountDeletion.mockResolvedValue(mockResult);
+
+      const result = await controller.requestAccountDeletion('1');
+
+      expect(service.requestAccountDeletion).toHaveBeenCalledWith('1');
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should handle request errors', async () => {
+      const error = new Error('Request failed');
+      mockUsersService.requestAccountDeletion.mockRejectedValue(error);
+
+      await expect(controller.requestAccountDeletion('1')).rejects.toThrow(error);
+      expect(service.requestAccountDeletion).toHaveBeenCalledWith('1');
+    });
+  });
+
+  describe('findPendingDeletionRequests', () => {
+    it('should return pending deletion requests', async () => {
+      const mockRequests = [
+        { user: mockUser, id: 'req-1', status: 'PENDING' },
+        { user: { ...mockUser, id: '2' }, id: 'req-2', status: 'PENDING' }
+      ];
+      mockUsersService.findPendingDeletionRequests.mockResolvedValue(mockRequests);
+
+      const result = await controller.findPendingDeletionRequests();
+
+      expect(service.findPendingDeletionRequests).toHaveBeenCalled();
+      expect(result).toEqual([
+        plainToInstance(UserResponseDto, mockUser),
+        plainToInstance(UserResponseDto, { ...mockUser, id: '2' })
+      ]);
+    });
+
+    it('should handle service errors', async () => {
+      const error = new Error('Service error');
+      mockUsersService.findPendingDeletionRequests.mockRejectedValue(error);
+
+      await expect(controller.findPendingDeletionRequests()).rejects.toThrow(error);
+      expect(service.findPendingDeletionRequests).toHaveBeenCalled();
+    });
+  });
+
+  describe('rejectDeletionRequest', () => {
+    const reason = 'Invalid request';
+
+    it('should reject deletion request with reason', async () => {
+      const mockResult = {
+        message: 'Deletion request rejected successfully',
+        requestId: 'req-123'
+      };
+      mockUsersService.rejectDeletionRequest.mockResolvedValue(mockResult);
+
+      const result = await controller.rejectDeletionRequest('req-123', 'admin-1', reason);
+
+      expect(service.rejectDeletionRequest).toHaveBeenCalledWith('req-123', 'admin-1', reason);
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should reject deletion request with default reason', async () => {
+      const mockResult = {
+        message: 'Deletion request rejected successfully',
+        requestId: 'req-123'
+      };
+      mockUsersService.rejectDeletionRequest.mockResolvedValue(mockResult);
+
+      const result = await controller.rejectDeletionRequest('req-123', 'admin-1');
+
+      expect(service.rejectDeletionRequest).toHaveBeenCalledWith('req-123', 'admin-1', 'No reason provided');
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should handle rejection errors', async () => {
+      const error = new Error('Rejection failed');
+      mockUsersService.rejectDeletionRequest.mockRejectedValue(error);
+
+      await expect(controller.rejectDeletionRequest('req-123', 'admin-1', reason)).rejects.toThrow(error);
+      expect(service.rejectDeletionRequest).toHaveBeenCalledWith('req-123', 'admin-1', reason);
     });
   });
 

@@ -28,16 +28,17 @@ describe('AuthController', () => {
   });
 
   beforeEach(async () => {
-    const mockAuthService = {
-      register: jest.fn(),
-      login: jest.fn(),
-      verifyEmail: jest.fn(),
-      resendVerificationEmail: jest.fn(),
-      sendResetPasswordEmail: jest.fn(),
-      resetPassword: jest.fn(),
-      refreshToken: jest.fn(),
-      logout: jest.fn(),
-    };
+  const mockAuthService = {
+    register: jest.fn(),
+    login: jest.fn(),
+    verifyEmail: jest.fn(),
+    resendVerificationEmail: jest.fn(),
+    sendResetPasswordEmail: jest.fn(),
+    verifyResetPasswordToken: jest.fn(),
+    resetPassword: jest.fn(),
+    refreshToken: jest.fn(),
+    logout: jest.fn(),
+  };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
@@ -50,7 +51,10 @@ describe('AuthController', () => {
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get(AuthService) as jest.Mocked<AuthService>;
+    authService = module.get<AuthService>(AuthService) as jest.Mocked<AuthService>;
+
+    // Clear all mocks before each test
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
@@ -65,6 +69,7 @@ describe('AuthController', () => {
         type: UserType.PARTICULIER,
         firstName: 'John',
         lastName: 'Doe',
+        address: '123 Main St',
         country: Country.Kuwait,
         prefix: Prefix.PLUS_965,
         phoneNumber: 12345678,
@@ -91,6 +96,7 @@ describe('AuthController', () => {
         type: UserType.PARTICULIER,
         firstName: 'John',
         lastName: 'Doe',
+        address: '123 Main St',
         country: Country.Kuwait,
         prefix: Prefix.PLUS_965,
         phoneNumber: 12345678,
@@ -102,6 +108,46 @@ describe('AuthController', () => {
 
       await expect(controller.register(createUserDto)).rejects.toThrow('Registration failed');
       expect(authService.register).toHaveBeenCalledWith(createUserDto);
+    });
+
+    it('should handle email already exists error', async () => {
+      const createUserDto: CreateUserDto = {
+        email: 'existing@test.com',
+        password: 'Strong1!',
+        type: UserType.PARTICULIER,
+        firstName: 'John',
+        lastName: 'Doe',
+        address: '123 Main St',
+        country: Country.Kuwait,
+        prefix: Prefix.PLUS_965,
+        phoneNumber: 12345678,
+        verify_token: null,
+        verified_email: false,
+      };
+
+      authService.register.mockRejectedValue(new Error('Email already exists'));
+
+      await expect(controller.register(createUserDto)).rejects.toThrow('Email already exists');
+    });
+
+    it('should handle invalid input data', async () => {
+      const createUserDto: CreateUserDto = {
+        email: 'invalid-email',
+        password: 'Strong1!',
+        type: UserType.PARTICULIER,
+        firstName: '',
+        lastName: '',
+        address: '123 Main St',
+        country: Country.Kuwait,
+        prefix: Prefix.PLUS_965,
+        phoneNumber: 12345678,
+        verify_token: null,
+        verified_email: false,
+      };
+
+      authService.register.mockRejectedValue(new Error('Invalid email format'));
+
+      await expect(controller.register(createUserDto)).rejects.toThrow('Invalid email format');
     });
   });
 
@@ -115,10 +161,12 @@ describe('AuthController', () => {
       const mockUser = {
         id: '1',
         email: 'test@test.com',
+        newEmail: null,
         password: 'hashedpassword',
         type: UserType.PARTICULIER,
         firstName: 'John',
         lastName: 'Doe',
+        address: '123 Main St',
         country: Country.Kuwait,
         prefix: Prefix.PLUS_965,
         phoneNumber: 12345678,
@@ -173,6 +221,21 @@ describe('AuthController', () => {
 
       await expect(controller.login(loginDto, res)).rejects.toThrow('Invalid credentials');
       expect(authService.login).toHaveBeenCalledWith(loginDto.email, loginDto.password);
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('should handle empty email', async () => {
+      const loginDto: LoginDto = {
+        email: '',
+        password: 'Strong1!',
+      };
+
+      authService.login.mockRejectedValue(new Error('Invalid credentials'));
+      const res = mockResponse();
+
+      await expect(controller.login(loginDto, res)).rejects.toThrow('Invalid credentials');
+      expect(authService.login).toHaveBeenCalledWith('', 'Strong1!');
     });
   });
 
@@ -218,6 +281,20 @@ describe('AuthController', () => {
       const res = mockResponse();
 
       await expect(controller.verifyEmail(verifyEmailDto, res)).rejects.toThrow('Invalid token');
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('should handle malformed token', async () => {
+      const verifyEmailDto: VerifyEmailDto = {
+        email: 'test@test.com',
+        token: '12345', // Less than 6 characters
+      };
+
+      authService.verifyEmail.mockRejectedValue(new Error('Token must be exactly 6 characters'));
+      const res = mockResponse();
+
+      await expect(controller.verifyEmail(verifyEmailDto, res)).rejects.toThrow('Token must be exactly 6 characters');
     });
   });
 
@@ -327,6 +404,92 @@ describe('AuthController', () => {
       const res = mockResponse();
 
       await expect(controller.resetPassword(resetPasswordDto, res)).rejects.toThrow('Invalid token');
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('should handle weak password', async () => {
+      const resetPasswordDto: ResetPasswordDto = {
+        email: 'test@test.com',
+        token: '123456',
+        password: 'weak',
+      };
+
+      authService.resetPassword.mockRejectedValue(new Error('Password is too weak'));
+      const res = mockResponse();
+
+      await expect(controller.resetPassword(resetPasswordDto, res)).rejects.toThrow('Password is too weak');
+    });
+
+    it('should handle expired token', async () => {
+      const resetPasswordDto: ResetPasswordDto = {
+        email: 'test@test.com',
+        token: '123456',
+        password: 'NewStrong1!',
+      };
+
+      authService.resetPassword.mockRejectedValue(new Error('Token has expired'));
+      const res = mockResponse();
+
+      await expect(controller.resetPassword(resetPasswordDto, res)).rejects.toThrow('Token has expired');
+    });
+  });
+
+  describe('verifyResetPasswordToken', () => {
+    it('should verify reset password token successfully', async () => {
+      const mockResult = {
+        message: 'Reset password token is valid',
+      };
+
+      authService.verifyResetPasswordToken.mockResolvedValue(mockResult);
+
+      const result = await controller.verifyResetPasswordToken('valid_token', 'test@test.com');
+
+      expect(authService.verifyResetPasswordToken).toHaveBeenCalledWith('test@test.com', 'valid_token');
+      expect(result).toEqual({ message: 'Reset token is valid' });
+    });
+
+    it('should throw ForbiddenException when token is invalid', async () => {
+      authService.verifyResetPasswordToken.mockRejectedValue(new Error('Invalid or expired reset token'));
+
+      await expect(controller.verifyResetPasswordToken('invalid_token', 'test@test.com')).rejects.toThrow('Invalid or expired reset token');
+      expect(authService.verifyResetPasswordToken).toHaveBeenCalledWith('test@test.com', 'invalid_token');
+    });
+
+    it('should throw ForbiddenException when service returns false/null', async () => {
+      authService.verifyResetPasswordToken.mockResolvedValue(false as any);
+
+      await expect(controller.verifyResetPasswordToken('token', 'test@test.com')).rejects.toThrow(ForbiddenException);
+      await expect(controller.verifyResetPasswordToken('token', 'test@test.com')).rejects.toThrow('Invalid or expired reset token');
+    });
+  });
+
+  describe('verifyForgotPasswordToken', () => {
+    it('should verify forgot password token successfully', async () => {
+      const mockResult = {
+        message: 'Reset password token is valid',
+      };
+
+      authService.verifyResetPasswordToken.mockResolvedValue(mockResult);
+
+      const result = await controller.verifyResetPasswordToken('valid_token', 'test@test.com');
+
+      expect(authService.verifyResetPasswordToken).toHaveBeenCalledWith('test@test.com', 'valid_token');
+      expect(result).toEqual({ message: 'Reset token is valid' });
+    });
+
+    it('should throw ForbiddenException when token is invalid', async () => {
+      authService.verifyResetPasswordToken.mockRejectedValue(new Error('Invalid or expired reset token'));
+
+      await expect(controller.verifyResetPasswordToken('invalid_token', 'test@test.com')).rejects.toThrow('Invalid or expired reset token');
+      expect(authService.verifyResetPasswordToken).toHaveBeenCalledWith('test@test.com', 'invalid_token');
+    });
+
+    it('should throw ForbiddenException when service returns false/null', async () => {
+      authService.verifyResetPasswordToken.mockResolvedValue(false as any);
+
+      await expect(controller.verifyResetPasswordToken('token', 'test@test.com')).rejects.toThrow(ForbiddenException);
+      await expect(controller.verifyResetPasswordToken('token', 'test@test.com')).rejects.toThrow('Invalid or expired reset token');
     });
   });
 
@@ -360,6 +523,23 @@ describe('AuthController', () => {
 
       await expect(controller.refreshToken(req, res)).rejects.toThrow(ForbiddenException);
       await expect(controller.refreshToken(req, res)).rejects.toThrow('Refresh token not found');
+      expect(authService.refreshToken).not.toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenException when refresh token is undefined', async () => {
+      const req = mockRequest({ refresh_token: undefined });
+      const res = mockResponse();
+
+      await expect(controller.refreshToken(req, res)).rejects.toThrow(ForbiddenException);
+      await expect(controller.refreshToken(req, res)).rejects.toThrow('Refresh token not found');
+    });
+
+    it('should throw ForbiddenException when refresh token is empty string', async () => {
+      const req = mockRequest({ refresh_token: '' });
+      const res = mockResponse();
+
+      await expect(controller.refreshToken(req, res)).rejects.toThrow(ForbiddenException);
+      await expect(controller.refreshToken(req, res)).rejects.toThrow('Refresh token not found');
     });
 
     it('should throw error when refresh token service fails', async () => {
@@ -368,6 +548,8 @@ describe('AuthController', () => {
       const res = mockResponse();
 
       await expect(controller.refreshToken(req, res)).rejects.toThrow('Invalid refresh token');
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 

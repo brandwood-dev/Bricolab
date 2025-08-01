@@ -10,6 +10,7 @@ export class UserResponseDto {
     country: Country;
     prefix: Prefix;
     type: UserType;
+    address: string;
     profilePicture: string | null;
     idCardFront: string | null;
     idCardBack: string | null;
@@ -32,5 +33,7 @@ export class UserResponseDto {
     isVerified: boolean;
     @Exclude()
     isActive: boolean;
+    
+    hasDeletionRequest?: boolean;
     
 }

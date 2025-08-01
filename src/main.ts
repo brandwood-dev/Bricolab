@@ -62,6 +62,11 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('bricolib')
     .build();
+  app.enableCors({
+    origin: 'http://localhost:8081', 
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true, 
+  });
   const documentFactory = () => SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, documentFactory);
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
