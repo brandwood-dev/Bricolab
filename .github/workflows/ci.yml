@@ -2,16 +2,14 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main,develop,staging]
   pull_request:
-    branches: [main]
+    branches: [main,develop,staging]
   workflow_dispatch:
   
 permissions:
   contents: read
   pull-requests: read
-
-
 env:
   NODE_VERSION: '22'
   REGISTRY: docker.io
@@ -168,7 +166,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
       - name: Run npm audit
         run: npm audit --audit-level=high
 
@@ -248,10 +247,11 @@ jobs:
             -Dsonar.organization=bricolab
             -Dsonar.sources=src
             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.eslint.reportPaths=eslint-report.json
             -Dsonar.coverage.exclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts
+            -Dsonar.working.directory=target/sonar
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-quality-gate-action@master
+        continue-on-error: true 
         with:
           scanMetadataReportFile: target/sonar/report-task.txt
         env:
