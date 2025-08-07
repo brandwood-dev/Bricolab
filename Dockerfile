@@ -13,6 +13,9 @@ COPY prisma ./prisma
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
+# Ensure uploads directory exists and is writable
+RUN mkdir -p /app/uploads/tools && chmod -R 777 /app/uploads
+
 COPY . .
 
 RUN npx prisma generate 
