@@ -159,7 +159,7 @@ export class ToolsController {
   }
 
   @Get('statistics')
-  @UseGuards(SimpleAuthGuard, SimpleRolesGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get tool statistics (Admin only)' })
   @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
@@ -307,7 +307,7 @@ export class ToolsController {
 
   // Admin/Moderation endpoints
   @Post(':id/moderate')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Moderate a tool (Approve/Reject/Delete) - Admin only' })
   @ApiResponse({ status: 200, description: 'Tool moderated successfully' })
@@ -323,7 +323,7 @@ export class ToolsController {
   }
 
   @Get('admin/pending')
-  @UseGuards(SimpleAuthGuard, SimpleRolesGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get pending tools for moderation - Admin only' })
   @ApiResponse({ status: 200, description: 'Pending tools retrieved successfully' })

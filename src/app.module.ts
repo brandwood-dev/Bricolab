@@ -18,6 +18,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { BlogModule } from './modules/blog/blog.module';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ReviewModule } from './modules/review/review.module';
 
 @Module({
   imports: [
@@ -56,7 +57,8 @@ import { MongooseModule } from '@nestjs/mongoose';
     BlogModule,
     ToolsModule,
     FavoritesModule,
-    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/bricolab')
+    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/bricolab'),
+    ReviewModule
 
   ],
   controllers: [],
